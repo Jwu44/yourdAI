@@ -75,6 +75,7 @@ class Task:
                  categories: Optional[List[str]] = None,
                  id: Optional[str] = None,
                  is_subtask: bool = False,
+                 is_microstep: bool = False,
                  completed: bool = False,
                  is_section: bool = False,
                  section: Optional[str] = None,
@@ -83,7 +84,12 @@ class Task:
                  section_index: int = 0,
                  type: str = "task",
                  is_recurring: Optional[Union[Dict, RecurrenceType]] = None,
-                 start_date: Optional[str] = None):
+                 start_date: Optional[str] = None,
+                 # New microstep fields
+                 rationale: Optional[str] = None,
+                 estimated_time: Optional[str] = None,
+                 energy_level_required: Optional[str] = None):
+                 
         """
         Initialize a task with all its attributes.
         """
@@ -91,6 +97,7 @@ class Task:
         self.text = text
         self.categories = set(categories) if categories else set()
         self.is_subtask = is_subtask
+        self.is_microstep = is_microstep
         self.completed = completed
         self.is_section = is_section
         self.section = section
@@ -99,6 +106,11 @@ class Task:
         self.section_index = section_index
         self.type = type
         
+        # Add microstep fields
+        self.rationale = rationale
+        self.estimated_time = estimated_time
+        self.energy_level_required = energy_level_required
+
         # Handle recurrence pattern
         if isinstance(is_recurring, dict):
             self.is_recurring = RecurrenceType.from_dict(is_recurring)
@@ -111,11 +123,12 @@ class Task:
 
     def to_dict(self) -> Dict:
         """Convert the task to a dictionary representation."""
-        return {
+        base_dict = {
             "id": self.id,
             "text": self.text,
             "categories": list(self.categories),
             "is_subtask": self.is_subtask,
+            "is_microstep": self.is_microstep,
             "completed": self.completed,
             "is_section": self.is_section,
             "section": self.section,
@@ -126,6 +139,16 @@ class Task:
             "is_recurring": self.is_recurring.to_dict() if self.is_recurring else None,
             "start_date": self.start_date,
         }
+        
+        # Only include microstep fields if they exist
+        if self.is_microstep:
+            base_dict.update({
+                "rationale": self.rationale,
+                "estimated_time": self.estimated_time,
+                "energy_level_required": self.energy_level_required,
+            })
+            
+        return base_dict
 
     @classmethod
     def from_dict(cls, data: Dict) -> 'Task':
@@ -143,6 +166,7 @@ class Task:
             categories=data.get("categories", []),
             id=data.get("id"),
             is_subtask=data.get("is_subtask", False),
+            is_microstep=data.get("is_microstep", False),
             completed=data.get("completed", False),
             is_section=data.get("is_section", False),
             section=data.get("section"),
@@ -152,6 +176,9 @@ class Task:
             type=data.get("type", "task"),
             is_recurring=data.get("is_recurring"),
             start_date=data.get("start_date"),
+            rationale=data.get("rationale"),
+            estimated_time=data.get("estimated_time"),
+            energy_level_required=data.get("energy_level_required"),
         )
 
     def add_category(self, category: str) -> None:

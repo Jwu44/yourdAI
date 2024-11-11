@@ -1,7 +1,7 @@
 import { categorizeTask } from './api';
 import { v4 as uuidv4 } from 'uuid';
 import type { FormData } from './types';
-import { Task, FormAction, LayoutPreference, MonthWeek, RecurrenceType  } from './types';
+import { Task, FormAction, LayoutPreference, MonthWeek, RecurrenceType, DecompositionRequest, DecompositionResponse, MicrostepFeedback, FeedbackResponse  } from './types';
 import { format as dateFormat } from 'date-fns';
 
 const API_BASE_URL = 'http://localhost:8000/api';
@@ -969,4 +969,153 @@ export const loadSchedulesRange = async (
       error: error instanceof Error ? error.message : "Failed to load schedules"
     };
   }
+};
+
+// Add new functions for microstep operations
+export const handleMicrostepDecomposition = async (
+  task: Task,
+  formData: FormData
+): Promise<DecompositionResponse> => {
+  try {
+    const request: DecompositionRequest = {
+      task,
+      energy_patterns: formData.energy_patterns,
+      priorities: formData.priorities,
+      work_start_time: formData.work_start_time,
+      work_end_time: formData.work_end_time
+    };
+
+    const response = await fetch(`${API_BASE_URL}/tasks/decompose`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(request)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to decompose task');
+    }
+
+    const data = await response.json();
+    console.log(data)
+    return data;
+  } catch (error) {
+    console.error('Error decomposing task:', error);
+    // Return empty array on error since DecompositionResponse is now string[]
+    return [];
+}
+};
+
+export const submitMicrostepFeedback = async (
+  taskId: string,
+  microstepId: string,
+  accepted: boolean,
+  completionOrder?: number
+): Promise<FeedbackResponse> => {
+  try {
+    const feedback: MicrostepFeedback = {
+      task_id: taskId,
+      microstep_id: microstepId,
+      accepted,
+      completion_order: completionOrder,
+      timestamp: new Date().toISOString()
+    };
+
+    const response = await fetch(`${API_BASE_URL}/tasks/microstep-feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(feedback)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to submit feedback');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error submitting microstep feedback:', error);
+    return {
+      database_status: 'error',
+      colab_status: 'error',
+      error: error instanceof Error ? error.message : 'Failed to submit feedback'
+    };
+  }
+};
+
+// Add helper function to handle microstep selection/rejection
+// Add helper function to handle microstep selection/rejection
+export const handleMicrostepSelection = async (
+  microstep: Task,
+  accepted: boolean,
+  tasks: Task[],
+  onUpdateTask: (task: Task) => void
+): Promise<void> => {
+  try {
+    if (!microstep.parent_id) return;
+
+    // Submit feedback
+    const feedbackResult = await submitMicrostepFeedback(
+      microstep.parent_id,
+      microstep.id,
+      accepted
+    );
+
+    if (feedbackResult.database_status === 'error' || feedbackResult.colab_status === 'error') {
+      console.warn('Feedback submission had errors:', feedbackResult);
+    }
+
+    if (accepted) {
+      // Find parent task
+      const parentTask = tasks.find(t => t.id === microstep.parent_id);
+      if (!parentTask) return;
+
+      // Get existing microsteps for this parent to determine position
+      const existingMicrosteps = tasks.filter(
+        t => t.parent_id === microstep.parent_id && t.is_microstep
+      );
+
+      // Create new task object from microstep
+      const newSubtask: Task = {
+        id: microstep.id,
+        text: microstep.text,
+        is_subtask: true,
+        is_microstep: true,
+        completed: false,
+        is_section: false,
+        section: parentTask.section,
+        parent_id: parentTask.id,
+        level: (parentTask.level || 0) + 1,
+        section_index: (parentTask.section_index ?? 0) + existingMicrosteps.length + 1,
+        type: 'microstep',
+        categories: parentTask.categories || [],
+        start_time: parentTask.start_time,
+        end_time: parentTask.end_time,
+        is_recurring: parentTask.is_recurring,
+        start_date: parentTask.start_date
+      };
+
+      // Add the new subtask to tasks array
+      onUpdateTask(newSubtask);
+    }
+  } catch (error) {
+    console.error('Error handling microstep selection:', error);
+  }
+};
+
+// Update existing functions to use new types
+export const checkTaskCompletion = (task: Task, tasks: Task[]): boolean => {
+  // If task has no microsteps, use its own completion state
+  const microsteps = tasks.filter(
+    t => t.parent_id === task.id && t.is_microstep
+  );
+  
+  if (microsteps.length === 0) return task.completed;
+
+  // Task is complete if all its microsteps are complete
+  return microsteps.every(step => step.completed);
 };

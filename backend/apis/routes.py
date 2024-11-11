@@ -1,10 +1,12 @@
 from flask import Blueprint, jsonify, request
-from backend.services.colab_integration import process_user_data, categorize_task, identify_recurring_tasks
-from backend.db_config import get_user_schedules_collection
+from backend.services.colab_integration import process_user_data, categorize_task, identify_recurring_tasks, decompose_task, send_microstep_feedback
+from backend.db_config import get_user_schedules_collection, store_microstep_feedback, get_microstep_feedback_collection, get_decomposition_patterns_collection, get_successful_patterns
 import traceback
-from datetime import datetime
 from bson import ObjectId
 from datetime import datetime, timedelta
+from pymongo import DESCENDING
+from backend.models.task import Task
+
 
 api_bp = Blueprint("api", __name__)
 
@@ -362,5 +364,187 @@ def get_schedules_range():
 
     except Exception as e:
         print("Exception occurred:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/tasks/decompose", methods=["POST"])
+def api_decompose_task():
+    """Handle task decomposition requests."""
+    try:
+        data = request.json
+        if not data or 'task' not in data:
+            return jsonify({"error": "Missing task data"}), 400
+            
+        # Get task and user data
+        task_data = data['task']
+        user_data = {
+            'energy_patterns': data.get('energy_patterns', []),
+            'priorities': data.get('priorities', {}),
+            'work_start_time': data.get('work_start_time'),
+            'work_end_time': data.get('work_end_time')
+        }
+        # Call Colab integration for decomposition
+        result = decompose_task(task_data, user_data)
+        
+        # Extract just the text from each microstep
+        microstep_texts = [step['text'] for step in result]
+        print("Microsteps:", microstep_texts)
+
+        return jsonify(microstep_texts)
+        
+    except Exception as e:
+        print(f"Error in api_decompose_task: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/tasks/microstep-feedback", methods=["POST"])
+def api_store_microstep_feedback():
+    """
+    Handle POST requests for storing microstep feedback.
+    Expects JSON data with task_id, microstep_id, accepted, and optional completion_order.
+    """
+    try:
+        # Validate request data
+        data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+
+        # Required fields validation
+        required_fields = ['task_id', 'microstep_id', 'accepted']
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": "Missing required fields"}), 400
+
+        # Prepare feedback data dictionary
+        feedback_data = {
+            'task_id': data['task_id'],
+            'microstep_id': data['microstep_id'],
+            'accepted': data['accepted'],
+            'completion_order': data.get('completion_order'),  # Optional field
+            'timestamp': datetime.utcnow().isoformat()  # Add timestamp
+        }
+
+        # Store feedback in database
+        db_result = store_microstep_feedback(feedback_data)  # Pass single dictionary argument
+
+        if not db_result:
+            return jsonify({
+                "error": "Failed to store feedback",
+                "database_status": "error",
+                "colab_status": "error"
+            }), 500
+
+        # Return success response
+        return jsonify({
+            "database_status": "success",
+            "colab_status": "success"
+        })
+
+    except Exception as e:
+        print(f"Error in api_store_microstep_feedback: {str(e)}")
+        traceback.print_exc()
+        return jsonify({
+            "error": str(e),
+            "database_status": "error",
+            "colab_status": "error"
+        }), 500
+
+# Add new routes for microstep operations
+@api_bp.route("/microstep/feedback", methods=["POST"])
+def submit_microstep_feedback():
+    """Handle feedback submission for microstep suggestions"""
+    try:
+        feedback_data = request.json
+        if not feedback_data or not all(
+            k in feedback_data for k in ['task_id', 'microstep_id', 'accepted']
+        ):
+            return jsonify({
+                "error": "Missing required fields"
+            }), 400
+        
+        # Add timestamp if not provided
+        if 'timestamp' not in feedback_data:
+            feedback_data['timestamp'] = datetime.utcnow().isoformat()
+            
+        # Store feedback
+        success = store_microstep_feedback(feedback_data)
+        
+        if success:
+            return jsonify({
+                "message": "Feedback stored successfully",
+                "status": "success"
+            }), 201
+        else:
+            return jsonify({
+                "error": "Failed to store feedback"
+            }), 500
+            
+    except Exception as e:
+        print(f"Error in submit_microstep_feedback: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/microstep/patterns", methods=["GET"])
+def get_decomposition_patterns():
+    """Retrieve successful decomposition patterns for a task"""
+    try:
+        task_text = request.args.get('task_text')
+        categories = request.args.getlist('category')
+        
+        if not task_text:
+            return jsonify({
+                "error": "Task text is required"
+            }), 400
+            
+        patterns = get_successful_patterns(
+            task_text,
+            categories,
+            min_success_rate=0.6
+        )
+        
+        return jsonify({
+            "patterns": patterns,
+            "count": len(patterns)
+        })
+        
+    except Exception as e:
+        print(f"Error in get_decomposition_patterns: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/microstep/stats", methods=["GET"])
+def get_microstep_stats():
+    """Get statistics about microstep usage and success rates"""
+    try:
+        # Get date range for stats
+        days = int(request.args.get('days', 30))
+        start_date = datetime.utcnow() - timedelta(days=days)
+        
+        feedback_collection = get_microstep_feedback_collection()
+        
+        # Get overall statistics
+        total_suggestions = feedback_collection.count_documents({
+            'timestamp': {'$gte': start_date.isoformat()}
+        })
+        
+        accepted_suggestions = feedback_collection.count_documents({
+            'timestamp': {'$gte': start_date.isoformat()},
+            'accepted': True
+        })
+        
+        # Get most successful patterns
+        patterns_collection = get_decomposition_patterns_collection()
+        top_patterns = patterns_collection.find({
+            'last_used': {'$gte': start_date}
+        }).sort('success_rate', DESCENDING).limit(10)
+        
+        return jsonify({
+            "total_suggestions": total_suggestions,
+            "accepted_suggestions": accepted_suggestions,
+            "acceptance_rate": (accepted_suggestions / total_suggestions) if total_suggestions > 0 else 0,
+            "top_patterns": list(top_patterns)
+        })
+        
+    except Exception as e:
+        print(f"Error in get_microstep_stats: {str(e)}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500

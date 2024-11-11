@@ -2,11 +2,20 @@ import requests
 import urllib3
 from backend.models.task import Task
 import uuid
+from typing import List, Dict, Optional, Union
+from datetime import datetime
+import json
+from cachetools import TTLCache, LRUCache
 
 # Disable InsecureRequestWarning
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-COLAB_BASE_URL = "https://cac8-35-237-66-241.ngrok-free.app" 
+COLAB_BASE_URL = "https://c012-34-139-171-164.ngrok-free.app" 
+
+# Add cache for decomposition results (TTL of 24 hours, max 1000 entries)
+decomposition_cache = TTLCache(maxsize=1000, ttl=86400)
+# Add LRU cache for frequent tasks (max 100 entries)
+frequent_tasks_cache = LRUCache(maxsize=100)
 
 def process_user_data(user_data):
     colab_url = f"{COLAB_BASE_URL}/process_user_data"
@@ -74,6 +83,76 @@ def identify_recurring_tasks(current_schedule, previous_schedules):
             return result.get('recurring_tasks', [])
         else:
             raise Exception(f"Recurring tasks identification failed: {response.text}")
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        raise
+
+def decompose_task(task_data: Dict, user_data: Dict) -> Dict:
+    """
+    Send task decomposition request to Colab.
+    
+    Args:
+        task_data: Dictionary containing task information
+        user_data: Dictionary containing user context and preferences
+    
+    Returns:
+        Dictionary containing microsteps from Colab
+    """
+    url = f"{COLAB_BASE_URL}/decompose_task"
+    
+    # Check cache first
+    task_text = str(task_data.get('text', ''))
+    categories = task_data.get('categories', [])
+    
+    # Create cache key using task text instead of whole task object
+    cache_key = f"{task_text}_{json.dumps(categories)}"
+    if cache_key in decomposition_cache:
+        print(f"Cache hit for task: {task_data['text']}")
+        return decomposition_cache[cache_key]
+
+    try:
+        request_data = {
+            "task": task_data,
+            "user_context": user_data
+        }
+        print(request_data)
+        response = requests.post(url, json=request_data, verify=False)
+        
+        if response.status_code == 200:
+            result = response.json()
+            microsteps = result.get('microsteps', [])
+            print(microsteps)
+            # Cache the result
+            decomposition_cache[cache_key] = result
+            return microsteps
+        else:
+            raise Exception(f"Task decomposition failed: {response.text}")
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        raise
+
+def send_microstep_feedback(feedback_data: Dict) -> Dict:
+    """
+    Send microstep feedback to Colab for pattern learning.
+    
+    Args:
+        feedback_data: Dictionary containing feedback information
+    
+    Returns:
+        Response from Colab
+    """
+    url = f"{COLAB_BASE_URL}/store_microstep_feedback"
+    
+    try:
+        response = requests.post(url, json=feedback_data, verify=False)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return result
+        else:
+            raise Exception(f"Storing microstep feedback failed: {response.text}")
     
     except requests.exceptions.RequestException as e:
         print(f"Request failed: {e}")

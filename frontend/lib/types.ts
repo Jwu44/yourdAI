@@ -14,6 +14,10 @@ export interface Task {
     end_time?: string | null;
     is_recurring?: RecurrenceType | null;
     start_date?: string;
+    is_microstep?: boolean;
+    rationale?: string;
+    estimated_time?: string;
+    energy_level_required?: 'low' | 'medium' | 'high';
 }
 
 export interface FormData {
@@ -44,6 +48,43 @@ export interface Priority {
   name: string;
   icon: React.ElementType;
   color: string;
+}
+
+
+export interface MicrostepFeedback {
+  task_id: string;
+  microstep_id: string;
+  accepted: boolean;
+  completion_order?: number;
+  timestamp?: string;
+}
+
+// Add new type for decomposition cache
+export interface DecompositionCacheEntry {
+  taskText: string;
+  categories: string[];
+  microsteps: Task[];
+  successRate: number;
+  lastUsed: string;
+  totalSuggestions: number;
+  acceptedSuggestions: number;
+}
+
+export interface DecompositionRequest {
+  task: Task;
+  energy_patterns: string[];
+  priorities: Record<string, string>;
+  work_start_time: string;
+  work_end_time: string;
+}
+
+// Update the interface to reflect the new response format
+export type DecompositionResponse = string[];  // Array of microstep texts
+
+export interface FeedbackResponse {
+  database_status: 'success' | 'error';
+  colab_status: 'success' | 'error';
+  error?: string;
 }
 
 // Utility type for nested update

@@ -2,17 +2,26 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal } from 'lucide-react';
-import { Task } from '../../lib/types';
-import { isBrowser } from '../../lib/utils';
+import MicrostepSuggestions from '@/components/parts/MicrostepSuggestions';
 import { TypographyH4 } from '../../app/fonts/text';
+import { MoreHorizontal, Sparkles, Loader2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import { useForm } from '../../lib/FormContext';
+import { useToast } from "@/hooks/use-toast";
 import TaskEditDrawer from './TaskEditDrawer';
+import { Task } from '../../lib/types';
+import { 
+  handleMicrostepDecomposition, 
+  handleMicrostepSelection,
+  checkTaskCompletion 
+} from '../../lib/helper';
+import { isBrowser } from '../../lib/utils';
 
 interface EditableScheduleRowProps {
   task: Task;
@@ -22,6 +31,7 @@ interface EditableScheduleRowProps {
   moveTask: (dragIndex: number, hoverIndex: number, shouldIndent: boolean, targetSection: string | null) => void;
   isSection: boolean;
   children?: React.ReactNode;
+  allTasks: Task[]; 
 }
 
 // Interface for managing drag state
@@ -46,7 +56,8 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
   onDeleteTask,
   moveTask,
   isSection,
-  children
+  children,
+  allTasks
 }) => {
   // Local UI states
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -60,6 +71,18 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
   // Refs for DOM measurements
   const rowRef = useRef<HTMLDivElement>(null);
   const checkboxRef = useRef<HTMLDivElement>(null);
+
+  // New state for microsteps
+  const [isDecomposing, setIsDecomposing] = useState(false);
+  const [suggestedMicrosteps, setSuggestedMicrosteps] = useState<Task[]>([]);
+  const [showMicrosteps, setShowMicrosteps] = useState(false);
+
+  // Hooks
+  const { state: formData } = useForm();
+  const { toast } = useToast();
+
+  // Can only decompose non-section, non-microstep, non-subtask tasks
+  const canDecompose = !isSection && !task.is_microstep && !task.is_subtask;
 
   // Handlers for task operations
   const handleToggleComplete = useCallback((checked: boolean) => {
@@ -277,6 +300,112 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
     return null;
   }, [dragState]);
 
+  // Handle microstep decomposition of a task
+  const handleDecompose = useCallback(async () => {
+    // Guard clause - only proceed if decomposition is allowed and not already in progress
+    if (!canDecompose || isDecomposing) return;
+
+    try {
+      // Set loading state and clear any existing microsteps
+      setIsDecomposing(true);
+      setShowMicrosteps(false);
+
+      // Get microstep texts from backend
+      const microstepTexts = await handleMicrostepDecomposition(task, formData);
+      
+      // Convert microstep texts into full Task objects
+      const microstepTasks = microstepTexts.map((text: string) => ({
+        id: crypto.randomUUID(), // Generate unique ID for each microstep
+        text: text, // The microstep text from backend
+        is_microstep: true, // Mark as microstep
+        completed: false,
+        is_section: false,
+        section: task.section, // Inherit section from parent
+        parent_id: task.id, // Link to parent task
+        level: (task.level || 0) + 1, // Indent one level from parent
+        type: 'microstep',
+        categories: task.categories || [] // Inherit categories from parent
+      }));
+
+      // Update UI with new microsteps
+      setSuggestedMicrosteps(microstepTasks);
+      setShowMicrosteps(true);
+      
+      // Show success message
+      toast({
+        title: "Success",
+        description: "Select which microsteps to add",
+      });
+      
+    } catch (error) {
+      // Handle and display any errors
+      console.error('Error decomposing task:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to decompose task",
+        variant: "destructive",
+      });
+    } finally {
+      // Reset loading state regardless of outcome
+      setIsDecomposing(false);
+    }
+  }, [canDecompose, task, formData, toast]);
+
+  // Handle microstep acceptance/rejection
+  const handleMicrostepAccept = useCallback(async (microstep: Task) => {
+    const result = await handleMicrostepSelection(microstep, true, allTasks, onUpdateTask);
+    setSuggestedMicrosteps(prev => prev.filter(step => step.id !== microstep.id));
+
+    // Close suggestions panel when all microsteps are handled
+    if (suggestedMicrosteps.length <= 1) {
+      setShowMicrosteps(false);
+    }
+  }, [allTasks, onUpdateTask, suggestedMicrosteps.length]);
+
+  const handleMicrostepReject = useCallback(async (microstep: Task) => {
+    await handleMicrostepSelection(microstep, false, allTasks, onUpdateTask);
+    setSuggestedMicrosteps(prev => prev.filter(step => step.id !== microstep.id));
+
+    if (suggestedMicrosteps.length <= 1) {
+      setShowMicrosteps(false);
+    }
+  }, [allTasks, onUpdateTask, suggestedMicrosteps.length]);
+
+  // Render task actions
+  const renderTaskActions = () => (
+    <div className="flex items-center space-x-2">
+      {canDecompose && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleDecompose}
+          disabled={isDecomposing}
+          className={cn(
+            "text-blue-500 hover:text-blue-400",
+            isDecomposing && "opacity-50 cursor-not-allowed"
+          )}
+        >
+          {isDecomposing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+        </Button>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon">
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <DropdownMenuItem onClick={handleEdit}>Edit</DropdownMenuItem>
+          <DropdownMenuItem onClick={handleDelete}>Delete</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0, y: -10 }}
@@ -293,9 +422,13 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         onDragEnd={handleDragEnd}
-        className={`relative flex items-center p-2 my-1 bg-background rounded ${
-          isSection ? 'cursor-default flex-col items-start' : 'cursor-move'
-        }`}
+        className={cn(
+          "relative flex items-center p-2 my-1 bg-background rounded",
+          isSection ? "cursor-default flex-col items-start" : "cursor-move",
+          isDecomposing && "animate-pulse",
+          task.level && task.level > 0 ? "pl-8" : "",
+          isSection ? "mt-4" : ""
+        )}
         style={{
           marginLeft: task.is_subtask ? `${(task.level || 1) * 20}px` : 0,
           minHeight: isSection ? '40px' : 'auto',
@@ -333,23 +466,21 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
         )}
 
         {/* Task Actions */}
-        {!isSection && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={handleEdit}>Edit</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDelete}>Delete</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        {!isSection && renderTaskActions()}
 
         {/* Enhanced Drag Indicators */}
         {getDragIndicators()}
       </div>
+
+      {/* Microstep Suggestions */}
+      {showMicrosteps && suggestedMicrosteps.length > 0 && (
+        <MicrostepSuggestions
+          microsteps={suggestedMicrosteps}
+          onAccept={handleMicrostepAccept}
+          onReject={handleMicrostepReject}
+          className="mt-2"
+        />
+      )}
 
       {/* Edit Task Drawer */}
       {isDrawerOpen ? (

@@ -73,15 +73,26 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
 
   const handleUpdateTask = useCallback((updatedTask: Task) => {
     const taskIndex = memoizedTasks.findIndex(t => t.id === updatedTask.id);
+    
     if (taskIndex !== -1) {
-      // Create a new array with the updated task
+      // Update existing task
       const newTasks = memoizedTasks.map(task => 
         task.id === updatedTask.id ? { ...task, ...updatedTask } : task
       );
-      
-      // Call onUpdateTask before updating the local state
       onUpdateTask(updatedTask);
       onReorderTasks(newTasks);
+    } else {
+      // This is a new subtask/microstep
+      const parentIndex = memoizedTasks.findIndex(t => t.id === updatedTask.parent_id);
+      if (parentIndex !== -1) {
+        // Insert the new task after its parent and any existing siblings
+        const newTasks = [...memoizedTasks];
+        const insertIndex = parentIndex + 1 + memoizedTasks.slice(0, parentIndex + 1)
+          .filter(t => t.parent_id === updatedTask.parent_id).length;
+        newTasks.splice(insertIndex, 0, updatedTask);
+        onUpdateTask(updatedTask);
+        onReorderTasks(newTasks);
+      }
     }
   }, [memoizedTasks, onUpdateTask, onReorderTasks]);
 
@@ -125,7 +136,7 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
       }
     } else {
       // Get the actual target task based on the hover index
-      const targetTask = newTasks[hoverIndex > dragIndex ? hoverIndex - 1 : hoverIndex];
+      const targetTask = memoizedTasks[hoverIndex];
       const updatedDraggedTask = { ...draggedTask };
       
       if (shouldIndent && !targetTask.is_section) {
@@ -139,7 +150,9 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
         updatedDraggedTask.section = targetTask.section;
         
         // Insert the task immediately after its new parent
-        newTasks.splice(hoverIndex, 0, updatedDraggedTask);
+        // FIX: Adjust the insertion index to account for the removed dragged task
+        const adjustedHoverIndex = hoverIndex > dragIndex ? hoverIndex - 1 : hoverIndex;
+        newTasks.splice(adjustedHoverIndex + 1, 0, updatedDraggedTask);
       } else {
         // Handle non-indentation moves
         if (targetTask.is_section) {
@@ -201,6 +214,7 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
             onDeleteTask={handleDeleteTask}
             moveTask={moveTask}
             isSection={item.type === 'section'}
+            allTasks={memoizedTasks}
           >
             {item.type === 'section' && (
               <TypographyH4 className="mt-3 mb-1">
