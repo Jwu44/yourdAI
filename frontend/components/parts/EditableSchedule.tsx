@@ -2,7 +2,10 @@ import React, { useMemo, useCallback } from 'react';
 import { Pane } from 'evergreen-ui';
 import { TypographyH4 } from '@/app/fonts/text';
 import EditableScheduleRow from './EditableScheduleRow';
-import { Task } from '../../lib/types';
+import AISuggestionsList from './AISuggestionsList';
+import { Task, AISuggestion } from '../../lib/types';
+import { Sparkles, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface EditableScheduleProps {
   tasks: Task[];
@@ -10,6 +13,11 @@ interface EditableScheduleProps {
   onDeleteTask: (taskId: string) => void;
   onReorderTasks: (tasks: Task[]) => void;
   layoutPreference: string;
+  onRequestSuggestions: () => Promise<void>;
+  isLoadingSuggestions: boolean;
+  suggestionsMap: Map<string, AISuggestion[]>;
+  onAcceptSuggestion: (suggestion: AISuggestion) => void;
+  onRejectSuggestion: (suggestionId: string) => void;
 }
 
 const EditableSchedule: React.FC<EditableScheduleProps> = ({ 
@@ -17,7 +25,12 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
   onUpdateTask, 
   onDeleteTask, 
   onReorderTasks, 
-  layoutPreference
+  layoutPreference,
+  onRequestSuggestions,
+  isLoadingSuggestions,
+  suggestionsMap,
+  onAcceptSuggestion,
+  onRejectSuggestion
 }) => {
   const memoizedTasks = useMemo(() => {
     if (layoutPreference === 'category') {
@@ -205,25 +218,71 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
 
   return (
     <Pane>
-      {memoizedTasks.map((item, index) => (
-        <React.Fragment key={`${item.id}-${item.type}`}>
+      {/* Schedule Header with Magic Wand */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex-1">
+          {/* Existing header content */}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onRequestSuggestions}
+          disabled={isLoadingSuggestions}
+          className="ml-2"
+        >
+          {isLoadingSuggestions ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          <span className="sr-only">Get AI Suggestions</span>
+        </Button>
+      </div>
+
+      {/* Tasks and Suggestions */}
+      {memoizedTasks.map((task, index) => (
+        <React.Fragment key={`${task.id}-${task.type}`}>
           <EditableScheduleRow
-            task={item}
+            task={task}
             index={index}
-            onUpdateTask={handleUpdateTask}
-            onDeleteTask={handleDeleteTask}
+            onUpdateTask={onUpdateTask}
+            onDeleteTask={onDeleteTask}
             moveTask={moveTask}
-            isSection={item.type === 'section'}
+            isSection={task.type === 'section'}
             allTasks={memoizedTasks}
           >
-            {item.type === 'section' && (
+            {task.type === 'section' && (
               <TypographyH4 className="mt-3 mb-1">
-                {item.text}
+                {task.text}
               </TypographyH4>
             )}
           </EditableScheduleRow>
+
+          {/* Render suggestions after each task if they exist */}
+          {suggestionsMap.has(task.id) && (
+            <div className="ml-6 my-2">
+              <AISuggestionsList
+                suggestions={suggestionsMap.get(task.id) || []}
+                onAccept={onAcceptSuggestion}
+                onReject={onRejectSuggestion}
+                className="border-l-2 border-blue-500 pl-4"
+              />
+            </div>
+          )}
         </React.Fragment>
       ))}
+
+      {/* Render suggestions for schedule start if they exist */}
+      {suggestionsMap.has('schedule-start') && (
+        <div className="mb-4">
+          <AISuggestionsList
+            suggestions={suggestionsMap.get('schedule-start') || []}
+            onAccept={onAcceptSuggestion}
+            onReject={onRejectSuggestion}
+            className="border-l-2 border-blue-500 pl-4"
+          />
+        </div>
+      )}
     </Pane>
   );
 };

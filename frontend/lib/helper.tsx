@@ -1,7 +1,6 @@
 import { categorizeTask } from './api';
 import { v4 as uuidv4 } from 'uuid';
-import type { FormData } from './types';
-import { Task, FormAction, LayoutPreference, MonthWeek, RecurrenceType, DecompositionRequest, DecompositionResponse, MicrostepFeedback, FeedbackResponse  } from './types';
+import { Task, FormAction, LayoutPreference, MonthWeek, RecurrenceType, DecompositionRequest, DecompositionResponse, MicrostepFeedback, FeedbackResponse, FormData, GetAISuggestionsResponse  } from './types';
 import { format as dateFormat } from 'date-fns';
 
 const API_BASE_URL = 'http://localhost:8000/api';
@@ -284,77 +283,6 @@ const createSectionTask = (text: string, section: string, index: number): Task =
   is_recurring: { frequency: 'daily' },
   start_date: new Date().toISOString().split('T')[0],
 });
-
-const createFullTask = async (
-  line: string,
-  currentSection: string,
-  index: number,
-  sectionStartIndex: number,
-  inputTasks: Task[],
-  layoutPreference: LayoutPreference
-): Promise<Task | null> => {
-  // Calculate indent level
-  const indentLevel = line.search(/\S|$/) / 2;
-  let taskText = line.replace(/^□ /, '').replace(/^- /, '');
-  
-  // Extract time information if layout is timeboxed
-  let startTime: string | null = null;
-  let endTime: string | null = null;
-  if (layoutPreference.timeboxed !== 'untimeboxed') {
-    const timeMatch = taskText.match(/^(\d{1,2}:\d{2}(?:am|pm)?) - (\d{1,2}:\d{2}(?:am|pm)?):?\s*(.*)/i);
-    if (timeMatch) {
-      [, startTime, endTime, taskText] = timeMatch;
-    }
-  }
-
-  // Find matching task from input tasks or categorize new task
-  const matchingTask = inputTasks.find(t => t && taskText.toLowerCase().includes(t.text.toLowerCase()));
-  let categories = matchingTask ? matchingTask.categories || [] : [];
-
-  if (categories.length === 0) {
-    try {
-      const categorizedTask = await categorizeTask(taskText);
-      categories = categorizedTask?.categories;
-    } catch (error) {
-      console.error("Error categorizing task:", error);
-      categories = ['Uncategorized'];
-    }
-  }
-
-  // Create and return the task object
-  return {
-    id: uuidv4(),
-    text: taskText,
-    categories,
-    is_subtask: indentLevel > 0,
-    completed: false,
-    is_section: false,
-    section: currentSection,
-    parent_id: null,
-    level: indentLevel,
-    section_index: index - sectionStartIndex,
-    type: 'task',
-    start_time: startTime,
-    end_time: endTime,
-    is_recurring: null, // might need to update
-    start_date: today,
-  };
-};
-
-const updateTaskHierarchy = (task: Task, taskStack: Task[]): void => {
-  // Remove tasks from stack that are at a higher level than the current task
-  while (taskStack.length > (task.level ?? 0)) {
-    taskStack.pop();
-  }
-
-  // Set parent_id if there's a parent task
-  if (taskStack.length > 0) {
-    task.parent_id = taskStack[taskStack.length - 1].id;
-  }
-
-  // Add current task to the stack
-  taskStack.push(task);
-};
 
 const syncParsedScheduleWithBackend = async (scheduleId: string, parsedTasks: Task[]): Promise<void> => {
   try {
@@ -677,16 +605,6 @@ function memoize<TArgs extends any[], TReturn>(
     return result;
   };
 }
-
-// Then use it with proper typing for the format function
-const memoizedFormat = memoize<[Date, string], string>((date: Date, formatStr: string) => 
-  dateFormat(date, formatStr)
-);
-
-// Similarly update getWeekOfMonth memoization
-const memoizedGetWeekOfMonth = memoize<[Date], MonthWeek>((date: Date) => 
-  getWeekOfMonth(date)
-);
 
 const getSectionsFromCurrentSchedule = (currentSchedule: Task[]): string[] => {
   return currentSchedule
@@ -1048,7 +966,6 @@ export const submitMicrostepFeedback = async (
 };
 
 // Add helper function to handle microstep selection/rejection
-// Add helper function to handle microstep selection/rejection
 export const handleMicrostepSelection = async (
   microstep: Task,
   accepted: boolean,
@@ -1118,4 +1035,39 @@ export const checkTaskCompletion = (task: Task, tasks: Task[]): boolean => {
 
   // Task is complete if all its microsteps are complete
   return microsteps.every(step => step.completed);
+};
+
+export const fetchAISuggestions = async (
+  userId: string,
+  date: string,
+  currentSchedule: Task[],
+  historicalSchedules: Task[][],
+  priorities: Record<string, string>,
+  energyPatterns: string[]
+): Promise<GetAISuggestionsResponse> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/schedule/suggestions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userId,
+        date,
+        currentSchedule,
+        historicalSchedules,
+        priorities,
+        energyPatterns
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch AI suggestions');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching AI suggestions:', error);
+    throw error;
+  }
 };

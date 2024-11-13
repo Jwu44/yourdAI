@@ -146,3 +146,29 @@ export const RECURRENCE_OPTIONS = [
   { value: 'weekly', label: 'Weekly on {day}' }, // Template for weekly
   { value: 'monthly', label: 'Monthly on the {week} {day}' }, // Template for monthly
 ];
+
+export type SuggestionType = 
+  | "Energy Optimization"
+  | "Procrastination Prevention"
+  | "Priority Rebalancing"
+  | "Task Structure"
+  | "Time Management";
+
+export interface AISuggestion {
+  id: string;
+  text: string;
+  type: SuggestionType;
+  rationale: string;
+  confidence: number;
+  categories: string[];
+  user_id: string;
+  date: string;
+}
+
+export interface GetAISuggestionsResponse {
+  suggestions: AISuggestion[];
+  metadata: {
+    generated_at: string;
+    count: number;
+  };
+}

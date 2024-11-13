@@ -1,12 +1,13 @@
 from flask import Blueprint, jsonify, request
-from backend.services.colab_integration import process_user_data, categorize_task, identify_recurring_tasks, decompose_task, send_microstep_feedback
-from backend.db_config import get_user_schedules_collection, store_microstep_feedback, get_microstep_feedback_collection, get_decomposition_patterns_collection, get_successful_patterns
+from backend.services.colab_integration import process_user_data, categorize_task, identify_recurring_tasks, decompose_task, generate_schedule_suggestions
+from backend.db_config import get_user_schedules_collection, store_microstep_feedback, get_ai_suggestions_collection
 import traceback
 from bson import ObjectId
-from datetime import datetime, timedelta
+from datetime import datetime, UTC  
 from pymongo import DESCENDING
 from backend.models.task import Task
-
+from typing import List, Dict
+import json
 
 api_bp = Blueprint("api", __name__)
 
@@ -483,68 +484,108 @@ def submit_microstep_feedback():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@api_bp.route("/microstep/patterns", methods=["GET"])
-def get_decomposition_patterns():
-    """Retrieve successful decomposition patterns for a task"""
+@api_bp.route("/schedule/suggestions", methods=["POST"])
+def api_generate_suggestions():
+    """
+    Handle schedule suggestions generation requests.
+    
+    Expected request body:
+    {
+        "userId": str,
+        "currentSchedule": List[Dict],
+        "historicalSchedules": List[List[Dict]],
+        "priorities": Dict[str, str],
+        "energyPatterns": List[str],
+        "workStartTime": str,
+        "workEndTime": str
+    }
+    """
     try:
-        task_text = request.args.get('task_text')
-        categories = request.args.getlist('category')
+        # Validate request data
+        data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
         
-        if not task_text:
-            return jsonify({
-                "error": "Task text is required"
-            }), 400
+        required_fields = [
+            'userId', 'currentSchedule', 'historicalSchedules',
+            'priorities', 'energyPatterns'
+        ]
+        
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": "Missing required fields"}), 400
+        print(data)
+        try:
+            # Call Colab integration for suggestions
+            suggestions = generate_schedule_suggestions(
+                user_id=data['userId'],
+                current_schedule=data['currentSchedule'],
+                historical_schedules=data['historicalSchedules'],
+                priorities=data['priorities'],
+                energy_patterns=data['energyPatterns'],
+                work_start_time=data.get('workStartTime'),
+                work_end_time=data.get('workEndTime')
+            )
             
-        patterns = get_successful_patterns(
-            task_text,
-            categories,
-            min_success_rate=0.6
-        )
-        
-        return jsonify({
-            "patterns": patterns,
-            "count": len(patterns)
-        })
-        
+            # Store suggestions in database
+            stored_suggestions = store_suggestions_in_db(
+                user_id=data['userId'],
+                date=datetime.now().strftime('%Y-%m-%d'),
+                suggestions=suggestions
+            )
+            
+            return jsonify({
+                "suggestions": stored_suggestions,
+                "metadata": {
+                    "generated_at": datetime.now().isoformat(),
+                    "count": len(stored_suggestions)
+                }
+            })
+            
+        except Exception as e:
+            print(f"Error generating suggestions: {e}")
+            return jsonify({
+                "error": f"Failed to generate suggestions: {str(e)}"
+            }), 500
+            
     except Exception as e:
-        print(f"Error in get_decomposition_patterns: {str(e)}")
+        print(f"Error in api_generate_suggestions: {str(e)}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@api_bp.route("/microstep/stats", methods=["GET"])
-def get_microstep_stats():
-    """Get statistics about microstep usage and success rates"""
+class MongoJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, ObjectId):
+            return str(obj)
+        return super().default(obj)
+
+def store_suggestions_in_db(user_id: str, date: str, suggestions: List[Dict]) -> List[Dict]:
+    """Store generated suggestions in MongoDB."""
     try:
-        # Get date range for stats
-        days = int(request.args.get('days', 30))
-        start_date = datetime.utcnow() - timedelta(days=days)
+        suggestions_collection = get_ai_suggestions_collection()
         
-        feedback_collection = get_microstep_feedback_collection()
+        # Prepare suggestions for storage
+        suggestions_to_store = []
+        for suggestion in suggestions:
+            suggestion_doc = {
+                "user_id": user_id,
+                "date": date,
+                **suggestion,
+               "created_at": datetime.now(UTC).isoformat() 
+            }
+            suggestions_to_store.append(suggestion_doc)
         
-        # Get overall statistics
-        total_suggestions = feedback_collection.count_documents({
-            'timestamp': {'$gte': start_date.isoformat()}
-        })
+        # Store suggestions
+        if suggestions_to_store:
+            result = suggestions_collection.insert_many(suggestions_to_store)
+            
+            # Update suggestions with generated IDs - convert ObjectId to string
+            for suggestion, inserted_id in zip(suggestions_to_store, result.inserted_ids):
+                suggestion['id'] = str(inserted_id)  # Convert ObjectId to string
         
-        accepted_suggestions = feedback_collection.count_documents({
-            'timestamp': {'$gte': start_date.isoformat()},
-            'accepted': True
-        })
-        
-        # Get most successful patterns
-        patterns_collection = get_decomposition_patterns_collection()
-        top_patterns = patterns_collection.find({
-            'last_used': {'$gte': start_date}
-        }).sort('success_rate', DESCENDING).limit(10)
-        
-        return jsonify({
-            "total_suggestions": total_suggestions,
-            "accepted_suggestions": accepted_suggestions,
-            "acceptance_rate": (accepted_suggestions / total_suggestions) if total_suggestions > 0 else 0,
-            "top_patterns": list(top_patterns)
-        })
+        # Use custom encoder when returning
+        return json.loads(json.dumps(suggestions_to_store, cls=MongoJSONEncoder))
         
     except Exception as e:
-        print(f"Error in get_microstep_stats: {str(e)}")
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        print(f"Error storing suggestions: {e}")
+        # Return original suggestions if storage fails
+        return suggestions

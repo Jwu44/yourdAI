@@ -2,11 +2,11 @@ from pymongo.mongo_client import MongoClient
 from pymongo.errors import ConnectionFailure
 import os
 from dotenv import load_dotenv
-from pymongo import MongoClient, ASCENDING, DESCENDING
+from pymongo import MongoClient
 from pymongo.collection import Collection
-from typing import Optional, Dict, List, Any
-from datetime import datetime, timedelta
-
+from typing import Dict, Any
+from datetime import datetime
+from .models.ai_suggestions import AI_SUGGESTION_INDEXES
 # Load environment variables
 load_dotenv()
 
@@ -49,44 +49,6 @@ def get_microstep_feedback_collection() -> Collection:
 def get_decomposition_patterns_collection() -> Collection:
     """Get collection for storing successful decomposition patterns."""
     return get_collection('DecompositionPatterns')
-
-def initialize_db():
-    """
-    Initialize database connection and create necessary indices.
-    Combines both connection check and index creation.
-    """
-    try:
-        # Check database connection
-        client.admin.command('ismaster')
-        print("Successfully connected to MongoDB")
-        
-        # Create indices for microstep feedback collection
-        feedback_collection = get_microstep_feedback_collection()
-        feedback_collection.create_index([
-            ('task_id', ASCENDING),
-            ('timestamp', DESCENDING)
-        ])
-        feedback_collection.create_index([
-            ('microstep_id', ASCENDING),
-            ('accepted', ASCENDING)
-        ])
-        
-        # Create indices for decomposition patterns collection
-        patterns_collection = get_decomposition_patterns_collection()
-        patterns_collection.create_index([
-            ('task_text', ASCENDING),
-            ('categories', ASCENDING)
-        ])
-        patterns_collection.create_index([
-            ('success_rate', DESCENDING),
-            ('last_used', DESCENDING)
-        ])
-        
-        print("Database initialized successfully")
-        
-    except ConnectionFailure:
-        print("Failed to initialize database")
-        raise
 
 def store_microstep_feedback(feedback_data: Dict[str, Any]) -> bool:
     """
@@ -162,33 +124,39 @@ def update_decomposition_pattern_stats(task_id: str, microstep_id: str) -> None:
     except Exception as e:
         print(f"Error updating decomposition patterns: {e}")
 
-def get_successful_patterns(
-    task_text: str,
-    categories: List[str],
-    min_success_rate: float = 0.6
-) -> List[Dict[str, Any]]:
-    """
-    Retrieve successful decomposition patterns for similar tasks.
-    
-    Args:
-        task_text: Text of the task to find patterns for
-        categories: Task categories
-        min_success_rate: Minimum success rate threshold
+def get_ai_suggestions_collection() -> Collection:
+    """Get collection for storing AI suggestions."""
+    return get_collection('AIsuggestions')
+
+def initialize_ai_collections():
+    """Initialize collections and indexes for AI suggestions feature."""
+    try:
+        # Get suggestions collection
+        suggestions_collection = get_ai_suggestions_collection()
+
+        # Create indexes for suggestions collection
+        for index in AI_SUGGESTION_INDEXES:
+            suggestions_collection.create_index(index)
+
+        print("AI suggestions collection initialized successfully")
         
-    Returns:
-        List of successful patterns
+    except Exception as e:
+        print(f"Error initializing AI suggestions collection: {e}")
+        raise
+
+def initialize_db():
+    """
+    Initialize database connection and create necessary indices.
     """
     try:
-        patterns_collection = get_decomposition_patterns_collection()
+        # Check database connection
+        client.admin.command('ismaster')
+        print("Successfully connected to MongoDB")
+        # Initialize AI suggestions collection
+        initialize_ai_collections()
         
-        # Find patterns with similar text and categories
-        patterns = patterns_collection.find({
-            'task_text': {'$regex': task_text, '$options': 'i'},
-            'categories': {'$all': categories},
-            'success_rate': {'$gte': min_success_rate}
-        }).sort('success_rate', DESCENDING).limit(5)
+        print("Database initialized successfully")
         
-        return list(patterns)
-    except Exception as e:
-        print(f"Error retrieving decomposition patterns: {e}")
-        return []
+    except ConnectionFailure:
+        print("Failed to initialize database")
+        raise

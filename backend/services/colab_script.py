@@ -5,7 +5,7 @@ from flask import Flask, request, jsonify
 import anthropic
 import re
 import uuid
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 from datetime import datetime
 import json
@@ -473,49 +473,75 @@ def create_prompt_decompose(task: str, user_data: Dict[str, Any], categories: Li
     energy_patterns = ', '.join(user_data.get('energy_patterns', []))
     priorities = ', '.join(f"{k}: {v}" for k, v in user_data.get('priorities', {}).items())
 
-    prompt = f"""As an expert in behavior change and productivity optimization, analyze this task and break it down into practical, achievable microsteps based on the science of habit formation and behavior change.
+    prompt = f"""You are an expert in behavior change and productivity optimization, tasked with helping users break down their goals into achievable microsteps. Your role is to analyze the given task and user context, then create a set of practical, science-backed microsteps that will lead to successful habit formation and task completion.
 
-    Task: {task}
-    Categories: {', '.join(str(c) for c in categories)}
+    First, review the following information:
 
-    User Context:
-    - Energy Patterns: {energy_patterns}
-    - Life Priorities: {priorities}
+    Task to be broken down:
+    <task>
+    {task}
+    </task>
 
-    Background on Microsteps:
-    Microsteps are small, incremental, science-backed actions we can take that will have both immediate and long-lasting benefits. They should be:
-    1. Too small to fail
-    2. Immediately actionable
-    3. Highly specific
-    4. Linked to existing habits or timeframes
-    5. Support the completion of the larger task
+    User's energy patterns:
+    <energy_patterns>
+    {energy_patterns}
+    </energy_patterns>
 
-    Instructions:
-    1. Break down the task into 2-5 concrete microsteps that:
-    - Are specific and actionable
-    - Can be completed in a single session
-    - Build upon each other
-    - Consider the user's energy patterns and priorities
-    2. Each microstep should be small enough to require minimal willpower but meaningful enough to create progress
-    3. Order the microsteps logically based on:
-    - Dependencies between steps
-    - User's energy patterns throughout the day
-    - Alignment with stated priorities
+    User's life priorities:
+    <priorities>
+    {priorities}
+    </priorities>
 
-    Output Format:
-    Provide your response in JSON format:
-    {
+    Categories related to the task:
+    <categories>
+    {', '.join(str(c) for c in categories)}
+    </categories>
+
+    Now, let's define what makes an effective microstep:
+
+    1. Too small to fail: The action should be so minor that it requires minimal willpower to complete.
+    2. Immediately actionable: It can be done right away without extensive preparation.
+    3. Highly specific: The step should be clear and unambiguous.
+    4. Linked to existing habits or timeframes: It should fit naturally into the user's current routine.
+    5. Supportive of the larger task: Each microstep should contribute to the overall goal.
+
+    Your task is to break down the given task into 2-5 concrete microsteps that adhere to these principles. Consider the following guidelines:
+
+    1. Ensure each microstep is specific and actionable.
+    2. Design microsteps that can be completed in a single session.
+    3. Create microsteps that build upon each other logically.
+    4. Take into account the user's energy patterns and priorities when designing and ordering the microsteps.
+    5. Make each microstep small enough to require minimal willpower but meaningful enough to create progress.
+
+    Before providing your final output, wrap your thought process in <task_breakdown> tags:
+
+    <task_breakdown>
+    1. Analyze the main task and its components.
+    2. List the key elements of the task that need to be addressed.
+    3. Consider how the task aligns with the user's energy patterns and priorities.
+    4. Identify potential obstacles and how they could be addressed in the microsteps.
+    5. Brainstorm potential microsteps that meet the criteria for effectiveness.
+    6. For each potential microstep, evaluate its alignment with the effectiveness criteria (too small to fail, immediately actionable, highly specific, linked to existing habits, supportive of the larger task).
+    7. Determine the logical order of the microsteps based on dependencies and the user's context.
+    8. Estimate the time required and energy level needed for each microstep.
+    9. Refine the microsteps to ensure they build upon each other and lead to the overall goal.
+    </task_breakdown>
+
+    After completing your analysis, provide your response in the following JSON format:
+
+    {{
         "microsteps": [
-            {
-                "text": "microstep description",
-                "rationale": "brief explanation of why this step is important",
-                "estimated_time": "in minutes",
+            {{
+                "text": "Brief description of the microstep",
+                "rationale": "Explanation of why this step is important and how it relates to the overall task",
+                "estimated_time": "Time in minutes",
                 "energy_level_required": "low/medium/high"
-            }
+            }}
         ]
-    }
+    }}
 
-    Remember: Focus on making each microstep concrete, achievable, and aligned with the user's context."""
+    Remember to focus on making each microstep concrete, achievable, and aligned with the user's context. By starting small and building momentum through these microsteps, we can help the user make meaningful progress towards their larger goal.
+    """
 
     return prompt
 
@@ -530,17 +556,22 @@ def process_decomposition_response(response_text: str) -> List[Dict[str, Any]]:
         List of processed microsteps
     """
     try:
-        # Extract JSON from response if needed
+        print(response_text)
+        # Extract JSON from response
         json_match = re.search(r'\{[\s\S]*\}', response_text)
-        if json_match:
-            response_text = json_match.group(0)
+        if not json_match:
+            print("No JSON found in response")
+            return []
             
-        response_data = json.loads(response_text)
+        json_str = json_match.group(0)
+        response_data = json.loads(json_str)
+        
+        # Extract microsteps from the parsed JSON
         microsteps = response_data.get('microsteps', [])
         
         # Validate and clean microsteps
         processed_steps = []
-        for step in microsteps[:5]:  # Limit to 5 steps
+        for step in microsteps:
             if not isinstance(step, dict) or 'text' not in step:
                 continue
                 
@@ -549,13 +580,15 @@ def process_decomposition_response(response_text: str) -> List[Dict[str, Any]]:
             if not step_text or len(step_text) > 200:  # Basic validation
                 continue
             
-            processed_steps.append({
+            processed_step = {
                 'text': step_text,
                 'rationale': step.get('rationale', ''),
                 'estimated_time': step.get('estimated_time', '5-10'),
                 'energy_level_required': step.get('energy_level_required', 'medium')
-            })
+            }
+            processed_steps.append(processed_step)
             
+        print(f"Processed {len(processed_steps)} microsteps")  # Debug print
         return processed_steps
         
     except json.JSONDecodeError as e:
@@ -601,6 +634,69 @@ def update_decomposition_patterns(
             
     except Exception as e:
         print(f"Error updating decomposition patterns: {e}")
+
+def create_prompt_suggestions(user_data: Dict[str, Any]) -> str:
+    """
+    Creates a prompt for Claude to analyze schedule patterns and generate suggestions.
+    
+    Args:
+        user_data: Dictionary containing user schedule data and preferences
+        
+    Returns:
+        Formatted prompt string
+    """
+    prompt = f"""As an expert psychologist and productivity consultant, analyze this user's schedule patterns and generate optimized schedule suggestions based on the following information:
+
+    User Context:
+    <preferences>
+    Energy Patterns: {', '.join(user_data['energy_patterns'])}
+    Priorities: {json.dumps(user_data['priorities'], indent=2)}
+    Work Hours: {user_data.get('work_start_time', 'Not specified')} - {user_data.get('work_end_time', 'Not specified')}
+    </preferences>
+
+    Historical Schedule Data (Last 14 Days):
+    <historical_schedules>
+    {json.dumps(user_data['historical_schedules'], indent=2)}
+    </historical_schedules>
+
+    Current Schedule:
+    <current_schedule>
+    {json.dumps(user_data['current_schedule'], indent=2)}
+    </current_schedule>
+
+    Your task is to:
+    1. Analyze schedule patterns and user behavior, considering:
+    - Task completion patterns and success rates
+    - Energy level alignment with task timing
+    - Priority alignment with schedule structure
+    - Task dependencies and sequences
+    - Procrastination patterns
+    - Time management effectiveness
+
+    2. Generate up to 5 high-confidence suggestions that could improve the user's schedule.
+    Each suggestion should:
+    - Be specific and actionable
+    - Consider psychological principles of motivation and habit formation
+    - Account for the user's energy patterns and priorities
+    - Build on successful patterns from historical data
+    - Address identified challenges or optimization opportunities
+
+    Return the suggestions in this JSON format:
+    {{
+        "suggestions": [
+            {{
+                "text": str,            # The suggestion text
+                "type": str,            # One of: "Energy Optimization", "Procrastination Prevention", "Priority Rebalancing", "Task Structure", "Time Management"
+                "rationale": str,       # Psychology-based explanation for the suggestion
+                "confidence": float,    # Confidence score between 0-1
+                "categories": [str]     # Relevant task categories
+            }}
+        ]
+    }}
+
+    Focus on highest-impact suggestions that have strong supporting evidence from the user's data. Each suggestion should be grounded in behavioral science and pattern analysis."""
+
+    return prompt
 
 @app.route('/process_user_data', methods=['POST'])
 def process_user_data():
@@ -661,7 +757,7 @@ def decompose_task():
         
         # Generate decomposition prompt with proper string formatting
         prompt = create_prompt_decompose(task_text, user_context, categories)
-        
+        print("getting response")
         # Get response from Claude
         response = client.messages.create(
             model="claude-3-5-sonnet-20241022",
@@ -671,10 +767,10 @@ def decompose_task():
                 {"role": "user", "content": prompt}
             ]
         )
-        
+        print(response)
         # Process response
         microsteps = process_decomposition_response(response.content[0].text)
-        
+
         if not microsteps:
             return jsonify({
                 "error": "Failed to generate valid microsteps"
@@ -729,10 +825,147 @@ def store_microstep_feedback():
         print(f"Error storing feedback: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/generate_schedule_suggestions', methods=['POST'])
+def generate_schedule_suggestions():
+    """
+    API endpoint for generating schedule suggestions.
+    
+    Expected request format:
+    {
+        "user_data": {
+            "user_id": str,
+            "current_schedule": List[Dict],
+            "historical_schedules": List[List[Dict]],
+            "priorities": Dict[str, str],
+            "energy_patterns": List[str],
+            "work_start_time": str,
+            "work_end_time": str
+        }
+    }
+    """
+    try:
+        # Validate request data
+        data = request.json
+        if not data or 'user_data' not in data:
+            return jsonify({
+                "error": "No user data provided"
+            }), 400
+            
+        user_data = data['user_data']
+        
+        # Validate required fields
+        required_fields = [
+            'user_id', 'current_schedule', 'historical_schedules',
+            'priorities', 'energy_patterns'
+        ]
+        
+        if not all(field in user_data for field in required_fields):
+            return jsonify({
+                "error": "Missing required fields in user data"
+            }), 400
+            
+        # Validate data types
+        if not isinstance(user_data['historical_schedules'], list):
+            return jsonify({
+                "error": "Invalid historical schedules format"
+            }), 400
+            
+        if not isinstance(user_data['priorities'], dict):
+            return jsonify({
+                "error": "Invalid priorities format"
+            }), 400
+            
+        if not isinstance(user_data['energy_patterns'], list):
+            return jsonify({
+                "error": "Invalid energy patterns format"
+            }), 400
+            
+        # Generate prompt for Claude
+        try:
+            prompt = create_prompt_suggestions(user_data)
+        except Exception as e:
+            print(f"Error creating prompt: {str(e)}")
+            return jsonify({
+                "error": "Failed to create suggestion prompt"
+            }), 500
+            
+        # Get suggestions from Claude
+        try:
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=1024,
+                temperature=0.7,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+        except Exception as e:
+            print(f"Error getting Claude response: {str(e)}")
+            return jsonify({
+                "error": "Failed to generate suggestions"
+            }), 500
+            
+        # Process response
+        try:
+            # Extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', response.content[0].text)
+            if not json_match:
+                return jsonify({
+                    "error": "Invalid response format from AI"
+                }), 500
+                
+            suggestions_data = json.loads(json_match.group(0))
+            
+            if not isinstance(suggestions_data, dict) or 'suggestions' not in suggestions_data:
+                return jsonify({
+                    "error": "Invalid suggestion data structure"
+                }), 500
+                
+            suggestions = suggestions_data['suggestions']
+            
+            # Basic validation of suggestions
+            for suggestion in suggestions:
+                if not all(k in suggestion for k in [
+                    'text', 'type', 'rationale', 'confidence', 'categories'
+                ]):
+                    return jsonify({
+                        "error": "Invalid suggestion format"
+                    }), 500
+                    
+                # Ensure confidence is a float between 0 and 1
+                suggestion['confidence'] = float(suggestion['confidence'])
+                if not 0 <= suggestion['confidence'] <= 1:
+                    suggestion['confidence'] = max(0.0, min(1.0, suggestion['confidence']))
+            
+            return jsonify({
+                'suggestions': suggestions,
+                'metadata': {
+                    'generated_at': datetime.utcnow().isoformat(),
+                    'suggestion_count': len(suggestions)
+                }
+            })
+            
+        except json.JSONDecodeError as e:
+            print(f"Error decoding suggestion response: {str(e)}")
+            return jsonify({
+                "error": "Invalid JSON in AI response"
+            }), 500
+        except Exception as e:
+            print(f"Error processing suggestions: {str(e)}")
+            return jsonify({
+                "error": f"Failed to process suggestions: {str(e)}"
+            }), 500
+            
+    except Exception as e:
+        print(f"Error in generate_schedule_suggestions: {str(e)}")
+        return jsonify({
+            "error": str(e)
+        }), 500
+
 @app.route("/")
 def home():
     return "Running Flask on Google Colab!"
 
 # Start the Flask server in a new thread
-# threading.Thread(target=app.run, kwargs={"use_reloader": False, "port": port}).start()
-app.run(host='0.0.0.0', port=5009, use_reloader=False)
+threading.Thread(target=app.run, kwargs={"use_reloader": False, "port": port}).start()
+# app.run(host='0.0.0.0', port=5009, use_reloader=False)

@@ -10,7 +10,7 @@ from cachetools import TTLCache, LRUCache
 # Disable InsecureRequestWarning
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-COLAB_BASE_URL = "https://c012-34-139-171-164.ngrok-free.app" 
+COLAB_BASE_URL = "https://afa9-34-150-233-17.ngrok-free.app" 
 
 # Add cache for decomposition results (TTL of 24 hours, max 1000 entries)
 decomposition_cache = TTLCache(maxsize=1000, ttl=86400)
@@ -153,6 +153,61 @@ def send_microstep_feedback(feedback_data: Dict) -> Dict:
             return result
         else:
             raise Exception(f"Storing microstep feedback failed: {response.text}")
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        raise
+
+def generate_schedule_suggestions(
+    user_id: str,
+    current_schedule: List[Dict],
+    historical_schedules: List[List[Dict]],
+    priorities: Dict[str, str],
+    energy_patterns: List[str],
+    work_start_time: str = None,
+    work_end_time: str = None
+) -> List[Dict]:
+    """
+    Send schedule suggestions request to Colab.
+    
+    Args:
+        user_id: User identifier
+        current_schedule: Current day's schedule
+        historical_schedules: Previous schedules (up to 14 days)
+        priorities: User's priority rankings
+        energy_patterns: User's energy pattern preferences
+        work_start_time: Optional work start time
+        work_end_time: Optional work end time
+    
+    Returns:
+        List of AI-generated suggestions
+    """
+    url = f"{COLAB_BASE_URL}/generate_schedule_suggestions"
+
+    try:
+        # Prepare request data
+        request_data = {
+            "user_data": {
+                "user_id": user_id,
+                "current_schedule": current_schedule,
+                "historical_schedules": historical_schedules,
+                "priorities": priorities,
+                "energy_patterns": energy_patterns,
+                "work_start_time": work_start_time,
+                "work_end_time": work_end_time
+            }
+        }
+
+        # Make request to Colab
+        response = requests.post(url, json=request_data, verify=False)
+        
+        if response.status_code == 200:
+            result = response.json()
+            suggestions = result.get('suggestions', [])
+        
+            return suggestions
+        else:
+            raise Exception(f"Schedule suggestions generation failed: {response.text}")
     
     except requests.exceptions.RequestException as e:
         print(f"Request failed: {e}")
