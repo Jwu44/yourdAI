@@ -300,76 +300,121 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
     return null;
   }, [dragState]);
 
-  // Handle microstep decomposition of a task
-  const handleDecompose = useCallback(async () => {
-    // Guard clause - only proceed if decomposition is allowed and not already in progress
-    if (!canDecompose || isDecomposing) return;
+    // Handle microstep decomposition of a task
+    const handleDecompose = useCallback(async () => {
+      // Guard clause - only proceed if decomposition is allowed and not already in progress
+      if (!canDecompose || isDecomposing) return;
+  
+      try {
+        // Set loading state and clear any existing microsteps
+        setIsDecomposing(true);
+        setShowMicrosteps(false);
+  
+        // Get microstep texts from backend
+        const microstepTexts = await handleMicrostepDecomposition(task, formData);
+        
+        // Convert microstep texts into full Task objects
+        // Updated to handle both string array and object array responses
+        const microstepTasks = microstepTexts.map((step: string | { text: string }) => {
+          const text = typeof step === 'string' ? step : step.text;
+          return {
+            id: crypto.randomUUID(), // Generate unique ID for each microstep
+            text: text, // The microstep text from backend
+            is_microstep: true, // Mark as microstep
+            completed: false,
+            is_section: false,
+            section: task.section, // Inherit section from parent
+            parent_id: task.id, // Link to parent task
+            level: (task.level || 0) + 1, // Indent one level from parent
+            type: 'microstep',
+            categories: task.categories || [] // Inherit categories from parent
+          };
+        });
+  
+        // Update UI with new microsteps
+        setSuggestedMicrosteps(microstepTasks);
+        setShowMicrosteps(true);
+        
+        // Show success message
+        toast({
+          title: "Success",
+          description: "Select which microsteps to add",
+        });
+        
+      } catch (error) {
+        // Handle and display any errors
+        console.error('Error decomposing task:', error);
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to decompose task",
+          variant: "destructive",
+        });
+      } finally {
+        // Reset loading state regardless of outcome
+        setIsDecomposing(false);
+      }
+    }, [canDecompose, task, formData, toast]);
 
+  // Update the handleMicrostepAccept function to properly create and add the subtask
+  const handleMicrostepAccept = useCallback(async (microstep: Task) => {
     try {
-      // Set loading state and clear any existing microsteps
-      setIsDecomposing(true);
-      setShowMicrosteps(false);
-
-      // Get microstep texts from backend
-      const microstepTexts = await handleMicrostepDecomposition(task, formData);
-      
-      // Convert microstep texts into full Task objects
-      const microstepTasks = microstepTexts.map((text: string) => ({
-        id: crypto.randomUUID(), // Generate unique ID for each microstep
-        text: text, // The microstep text from backend
-        is_microstep: true, // Mark as microstep
-        completed: false,
-        is_section: false,
-        section: task.section, // Inherit section from parent
+      // Create a new task object with all required properties for a subtask
+      const newSubtask: Task = {
+        ...microstep,
+        id: crypto.randomUUID(), // Generate new ID for the actual task
+        is_subtask: true,
         parent_id: task.id, // Link to parent task
         level: (task.level || 0) + 1, // Indent one level from parent
-        type: 'microstep',
-        categories: task.categories || [] // Inherit categories from parent
-      }));
+        section: task.section, // Inherit section from parent
+        categories: task.categories || [], // Inherit categories from parent
+        completed: false,
+        is_section: false,
+        type: 'task', // Change type from 'microstep' to 'task'
+        start_time: null,
+        end_time: null,
+        is_recurring: null,
+        section_index: 0, // Will be recalculated by EditableSchedule
+      };
 
-      // Update UI with new microsteps
-      setSuggestedMicrosteps(microstepTasks);
-      setShowMicrosteps(true);
-      
-      // Show success message
+      // Call the main onUpdateTask function which will handle the task creation
+      // This will trigger the handleUpdateTask logic in EditableSchedule
+      console.log('Adding new subtask:', newSubtask);
+      onUpdateTask(newSubtask);
+
+      // Remove the microstep from suggestions
+      setSuggestedMicrosteps(prev => prev.filter(step => step.id !== microstep.id));
+
+      // Close suggestions panel when all microsteps are handled
+      if (suggestedMicrosteps.length <= 1) {
+        setShowMicrosteps(false);
+      }
+
+      // Show success toast
       toast({
         title: "Success",
-        description: "Select which microsteps to add",
+        description: "Microstep added to schedule",
       });
-      
+
     } catch (error) {
-      // Handle and display any errors
-      console.error('Error decomposing task:', error);
+      console.error('Error accepting microstep:', error);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to decompose task",
+        description: "Failed to add microstep to schedule",
         variant: "destructive",
       });
-    } finally {
-      // Reset loading state regardless of outcome
-      setIsDecomposing(false);
     }
-  }, [canDecompose, task, formData, toast]);
+  }, [task, onUpdateTask, suggestedMicrosteps.length, toast]);
 
-  // Handle microstep acceptance/rejection
-  const handleMicrostepAccept = useCallback(async (microstep: Task) => {
-    const result = await handleMicrostepSelection(microstep, true, allTasks, onUpdateTask);
+  // Update the handleMicrostepReject to simply remove the suggestion
+  const handleMicrostepReject = useCallback((microstep: Task) => {
+    // Remove the rejected microstep from suggestions
     setSuggestedMicrosteps(prev => prev.filter(step => step.id !== microstep.id));
 
     // Close suggestions panel when all microsteps are handled
     if (suggestedMicrosteps.length <= 1) {
       setShowMicrosteps(false);
     }
-  }, [allTasks, onUpdateTask, suggestedMicrosteps.length]);
-
-  const handleMicrostepReject = useCallback(async (microstep: Task) => {
-    await handleMicrostepSelection(microstep, false, allTasks, onUpdateTask);
-    setSuggestedMicrosteps(prev => prev.filter(step => step.id !== microstep.id));
-
-    if (suggestedMicrosteps.length <= 1) {
-      setShowMicrosteps(false);
-    }
-  }, [allTasks, onUpdateTask, suggestedMicrosteps.length]);
+  }, [suggestedMicrosteps.length]);
 
   // Render task actions
   const renderTaskActions = () => (

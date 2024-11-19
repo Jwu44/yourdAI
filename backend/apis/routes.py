@@ -384,13 +384,27 @@ def api_decompose_task():
             'work_start_time': data.get('work_start_time'),
             'work_end_time': data.get('work_end_time')
         }
+        
         # Call Colab integration for decomposition
         result = decompose_task(task_data, user_data)
         
-        # Extract just the text from each microstep
-        microstep_texts = [step['text'] for step in result]
+        # Handle different response formats safely
+        if result:
+            if isinstance(result, list):
+                if result and isinstance(result[0], dict):
+                    # If result is array of objects with 'text' property
+                    microstep_texts = [step['text'] for step in result]
+                else:
+                    # If result is already array of strings
+                    microstep_texts = result
+            else:
+                # If result is a single string, wrap it in a list
+                microstep_texts = [str(result)]
+        else:
+            # Handle empty or None result
+            return jsonify({"error": "No decomposition results generated"}), 400
+            
         print("Microsteps:", microstep_texts)
-
         return jsonify(microstep_texts)
         
     except Exception as e:

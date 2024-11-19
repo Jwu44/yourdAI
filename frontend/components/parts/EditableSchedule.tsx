@@ -4,8 +4,6 @@ import { TypographyH4 } from '@/app/fonts/text';
 import EditableScheduleRow from './EditableScheduleRow';
 import AISuggestionsList from './AISuggestionsList';
 import { Task, AISuggestion } from '../../lib/types';
-import { Sparkles, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface EditableScheduleProps {
   tasks: Task[];
@@ -26,8 +24,6 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
   onDeleteTask, 
   onReorderTasks, 
   layoutPreference,
-  onRequestSuggestions,
-  isLoadingSuggestions,
   suggestionsMap,
   onAcceptSuggestion,
   onRejectSuggestion
@@ -83,39 +79,6 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
       });
     }
   }, [tasks, layoutPreference]);
-
-  const handleUpdateTask = useCallback((updatedTask: Task) => {
-    const taskIndex = memoizedTasks.findIndex(t => t.id === updatedTask.id);
-    
-    if (taskIndex !== -1) {
-      // Update existing task
-      const newTasks = memoizedTasks.map(task => 
-        task.id === updatedTask.id ? { ...task, ...updatedTask } : task
-      );
-      onUpdateTask(updatedTask);
-      onReorderTasks(newTasks);
-    } else {
-      // This is a new subtask/microstep
-      const parentIndex = memoizedTasks.findIndex(t => t.id === updatedTask.parent_id);
-      if (parentIndex !== -1) {
-        // Insert the new task after its parent and any existing siblings
-        const newTasks = [...memoizedTasks];
-        const insertIndex = parentIndex + 1 + memoizedTasks.slice(0, parentIndex + 1)
-          .filter(t => t.parent_id === updatedTask.parent_id).length;
-        newTasks.splice(insertIndex, 0, updatedTask);
-        onUpdateTask(updatedTask);
-        onReorderTasks(newTasks);
-      }
-    }
-  }, [memoizedTasks, onUpdateTask, onReorderTasks]);
-
-  const handleDeleteTask = useCallback((taskId: string) => {
-    const newTasks = memoizedTasks.filter(task => 
-      task.id !== taskId && task.parent_id !== taskId
-    );
-    onDeleteTask(taskId);
-    onReorderTasks(newTasks);
-  }, [memoizedTasks, onDeleteTask, onReorderTasks]);
 
   // Enhanced moveTask to handle indentation levels more precisely
   const moveTask = useCallback((dragIndex: number, hoverIndex: number, shouldIndent: boolean, targetSection: string | null) => {
@@ -218,27 +181,6 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
 
   return (
     <Pane>
-      {/* Schedule Header with Magic Wand */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex-1">
-          {/* Existing header content */}
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onRequestSuggestions}
-          disabled={isLoadingSuggestions}
-          className="ml-2"
-        >
-          {isLoadingSuggestions ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4" />
-          )}
-          <span className="sr-only">Get AI Suggestions</span>
-        </Button>
-      </div>
-
       {/* Tasks and Suggestions */}
       {memoizedTasks.map((task, index) => (
         <React.Fragment key={`${task.id}-${task.type}`}>

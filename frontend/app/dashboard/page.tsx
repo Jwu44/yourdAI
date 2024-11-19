@@ -1,53 +1,15 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { format as dateFormat } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
 // UI Components
 import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerTrigger,
-} from "@/components/ui/drawer";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Loader2, ChevronLeft, ChevronRight,  ActivitySquare, Heart, Smile, Trophy  } from 'lucide-react';
 
 // Custom Components
-import { TypographyH3 } from '../fonts/text';
-import DashboardLeftCol from '@/components/parts/DashboardLeftCol';
+import DashboardHeader from '@/components/parts/DashboardHeader';
 import EditableSchedule from '@/components/parts/EditableSchedule';
-
-// Icons
-import { 
-  ActivitySquare, 
-  Heart, 
-  Smile, 
-  Trophy,
-  User,
-  Calendar as CalendarIcon,
-  CreditCard,
-  Settings,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
-  Loader2
-} from 'lucide-react';
 
 // Hooks and Context
 import { useToast } from "@/hooks/use-toast";
@@ -76,6 +38,7 @@ import {
   updateScheduleForDate, 
   fetchAISuggestions
 } from '@/lib/helper';
+
 
 const initialPriorities: Priority[] = [
     { id: 'health', name: 'Health', icon: ActivitySquare, color: 'green' },
@@ -278,28 +241,76 @@ const Dashboard: React.FC = () => {
       setScheduleDays(prevDays => {
         const newDays = [...prevDays];
         if (newDays[currentDayIndex]) {
-          newDays[currentDayIndex] = newDays[currentDayIndex].map(task => 
-            task.id === updatedTask.id ? { ...task, ...updatedTask } : task
-          );
+          const currentTasks = newDays[currentDayIndex];
+          const taskIndex = currentTasks.findIndex(t => t.id === updatedTask.id);
+          
+          if (taskIndex !== -1) {
+            // Update existing task
+            newDays[currentDayIndex] = currentTasks.map(task => 
+              task.id === updatedTask.id ? { ...task, ...updatedTask } : task
+            );
+          } else {
+            // Handle new subtask
+            const parentIndex = currentTasks.findIndex(t => t.id === updatedTask.parent_id);
+            if (parentIndex !== -1) {
+              // Insert after parent and existing siblings
+              const insertIndex = parentIndex + 1 + currentTasks
+                .slice(0, parentIndex + 1)
+                .filter(t => t.parent_id === updatedTask.parent_id).length;
+              
+              const newTasks = [...currentTasks];
+              newTasks.splice(insertIndex, 0, updatedTask);
+              newDays[currentDayIndex] = newTasks;
+            }
+          }
         }
         return newDays;
       });
   
-      // Update cache
+      // Update cache with the same logic
       setScheduleCache(prevCache => {
         const newCache = new Map(prevCache);
-        const updatedTasks = prevCache.get(currentDate)?.map(task =>
-          task.id === updatedTask.id ? { ...task, ...updatedTask } : task
-        ) || [];
-        newCache.set(currentDate, updatedTasks);
+        const currentTasks = prevCache.get(currentDate) || [];
+        const taskIndex = currentTasks.findIndex(t => t.id === updatedTask.id);
+        
+        if (taskIndex !== -1) {
+          // Update existing task
+          const updatedTasks = currentTasks.map(task =>
+            task.id === updatedTask.id ? { ...task, ...updatedTask } : task
+          );
+          newCache.set(currentDate, updatedTasks);
+        } else {
+          // Handle new subtask
+          const parentIndex = currentTasks.findIndex(t => t.id === updatedTask.parent_id);
+          if (parentIndex !== -1) {
+            const insertIndex = parentIndex + 1 + currentTasks
+              .slice(0, parentIndex + 1)
+              .filter(t => t.parent_id === updatedTask.parent_id).length;
+            
+            const newTasks = [...currentTasks];
+            newTasks.splice(insertIndex, 0, updatedTask);
+            newCache.set(currentDate, newTasks);
+          }
+        }
         return newCache;
       });
   
       // Persist changes to database
-      const updateResult = await updateScheduleForDate(currentDate, scheduleDays[currentDayIndex]);
+      const updateResult = await updateScheduleForDate(
+        currentDate, 
+        scheduleDays[currentDayIndex]
+      );
       
       if (!updateResult.success) {
         throw new Error(updateResult.error || 'Failed to update schedule');
+      }
+  
+      // Show success toast for new subtasks
+      if (!scheduleDays[currentDayIndex].find(t => t.id === updatedTask.id)) {
+        toast({
+          title: "Success",
+          description: "Microstep added to schedule",
+        });
       }
     } catch (error) {
       console.error('Error updating task:', error);
@@ -703,151 +714,58 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
   return (
     <div className="flex h-screen bg-[hsl(248,18%,4%)]">
       <div className="w-full max-w-4xl mx-auto p-6 overflow-y-auto main-content"> 
-        <div className="flex justify-between items-center mb-6">
-        <TypographyH3 className="text-white">
-          {(() => {
-            // Get the current date based on currentDayIndex
-            const currentDate = new Date();
-            currentDate.setDate(currentDate.getDate() + currentDayIndex);
-            
-            // If a specific date is selected from calendar, use that instead
-            const displayDate = date || currentDate;
-            
-            // Format the date as "Monday, January 1"
-            return dateFormat(displayDate, 'EEEE, MMMM d');
-          })()}
-        </TypographyH3>
-          <div className="flex items-center space-x-4">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline">Edit Inputs</Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-[400px] sm:w-[540px] p-0">
-                <DashboardLeftCol
-                  {...state}
-                  newTask={newTask}
-                  setNewTask={setNewTask}
-                  priorities={priorities}
-                  updateTask={updateTask}
-                  deleteTask={deleteTask}
-                  addTask={addTask}
-                  handleReorder={handleReorder}
-                  submitForm={handleSubmit}
-                  isLoading={isLoading}
-                  handleEnergyChange={handleEnergyChangeCallback}
-                />
-              </SheetContent>
-            </Sheet>
-            <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
-              <DropdownMenuTrigger asChild>
-                <Avatar className="h-10 w-10 cursor-pointer">
-                  <AvatarImage src="/avatar-placeholder.png" alt="User avatar" />
-                  <AvatarFallback>U</AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-56 bg-[#1c1c1c] text-white border-gray-700"
-                align="end"
-                alignOffset={-5}
-                sideOffset={5}
-              >
-                <DropdownMenuLabel className="font-normal">My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator className="bg-gray-700" />
-                <DropdownMenuItem className="focus:bg-gray-700">
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Profile</span>
-                </DropdownMenuItem>
-                <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-                  <DrawerTrigger asChild>
-                    <DropdownMenuItem
-                      className="focus:bg-gray-700"
-                      onSelect={(event) => {
-                        event.preventDefault();
-                        setIsDrawerOpen(true);
-                      }}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      <span>Schedules</span>
-                    </DropdownMenuItem>
-                  </DrawerTrigger>
-                  <DrawerContent className="bg-[#1c1c1c] text-white border-t border-gray-700">
-                    <div className="flex justify-center items-center min-h-[20vh] py-2">
-                      <Calendar
-                        mode="single"
-                        selected={date}
-                        onSelect={handleDateSelect}
-                        initialFocus
-                        className="mx-auto"
-                        classNames={{
-                          months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-                          month: "space-y-4",
-                          caption: "flex justify-center pt-1 relative items-center",
-                          caption_label: "text-sm font-medium",
-                          nav: "space-x-1 flex items-center",
-                          nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-                          nav_button_previous: "absolute left-1",
-                          nav_button_next: "absolute right-1",
-                          table: "w-full border-collapse space-y-1",
-                          head_row: "flex",
-                          head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
-                          row: "flex w-full mt-2",
-                          cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                          day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100",
-                          day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-                          day_today: "bg-accent text-accent-foreground",
-                          day_outside: "text-muted-foreground opacity-50",
-                          day_disabled: "text-muted-foreground opacity-50",
-                          day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
-                          day_hidden: "invisible",
-                        }}
-                        components={{
-                          IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
-                          IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
-                        }}
-                      />
-                    </div>
-                  </DrawerContent>
-                </Drawer>
-                <DropdownMenuItem className="focus:bg-gray-700">
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  <span>Subscription</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="focus:bg-gray-700">
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-gray-700" />
-                <DropdownMenuItem className="focus:bg-gray-700">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-  
+        {/* Header Component */}
+        <DashboardHeader
+          currentDayIndex={currentDayIndex}
+          selectedDate={date}
+          isLoadingSuggestions={isLoadingSuggestions}
+          isDrawerOpen={isDrawerOpen}
+          isDropdownOpen={isDropdownOpen}
+          state={state}
+          onRequestSuggestions={handleRequestSuggestions}
+          onDrawerOpenChange={setIsDrawerOpen}
+          onDropdownOpenChange={setIsDropdownOpen}
+          onDateSelect={handleDateSelect}
+          onSubmitForm={handleSubmit}
+          isLoading={isLoading}
+          dashboardLeftColProps={{
+            newTask,
+            setNewTask,
+            priorities,
+            updateTask,
+            deleteTask,
+            addTask,
+            handleReorder,
+            handleEnergyChange: handleEnergyChangeCallback,
+          }}
+        />
+    
         {/* Schedule Display Section */}
         {isLoadingSchedule ? (
+          // Loading State
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white" />
           </div>
         ) : scheduleDays.length > 0 && scheduleDays[currentDayIndex]?.length > 0 ? (
+          // Schedule Content
           <div className="space-y-4">
+            {/* Schedule Editor */}
             <div className="rounded-lg shadow-lg px-8 py-6">
-            <EditableSchedule
-              tasks={scheduleDays[currentDayIndex] || []}
-              onUpdateTask={handleScheduleTaskUpdate}
-              onDeleteTask={handleScheduleTaskDelete}
-              onReorderTasks={handleReorderTasks}
-              layoutPreference={state.layout_preference?.structure || 'unstructured'}
-              onRequestSuggestions={handleRequestSuggestions}
-              isLoadingSuggestions={isLoadingSuggestions}
-              suggestionsMap={suggestionsMap}
-              onAcceptSuggestion={handleAcceptSuggestion}
-              onRejectSuggestion={handleRejectSuggestion}
-            />
+              <EditableSchedule
+                tasks={scheduleDays[currentDayIndex] || []}
+                onUpdateTask={handleScheduleTaskUpdate}
+                onDeleteTask={handleScheduleTaskDelete}
+                onReorderTasks={handleReorderTasks}
+                layoutPreference={state.layout_preference?.structure || 'unstructured'}
+                onRequestSuggestions={handleRequestSuggestions}
+                isLoadingSuggestions={isLoadingSuggestions}
+                suggestionsMap={suggestionsMap}
+                onAcceptSuggestion={handleAcceptSuggestion}
+                onRejectSuggestion={handleRejectSuggestion}
+              />
             </div>
-            {/* Loading State for Suggestions */}
+  
+            {/* AI Suggestions Loading State */}
             {isLoadingSuggestions && (
               <div className="flex items-center justify-center h-20">
                 <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
@@ -856,8 +774,10 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
                 </span>
               </div>
             )}
+  
             {/* Navigation Controls */}
             <div className="flex justify-between items-center mt-4 px-8">
+              {/* Previous Day Button */}
               <Button
                 variant="outline"
                 onClick={handlePreviousDay}
@@ -867,6 +787,8 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
                 <ChevronLeft className="h-4 w-4" />
                 <span>Previous Day</span>
               </Button>
+  
+              {/* Next Day Button */}
               <Button
                 variant="outline"
                 onClick={handleNextDay}
@@ -878,12 +800,21 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
             </div>
           </div>
         ) : (
+          // Empty State
           <div className="flex flex-col items-center justify-center h-64 space-y-4">
             <p className="text-lg text-gray-300">
-              {state.response ? 'Processing your schedule...' : 'No schedule found for selected date'}
+              {state.response 
+                ? 'Processing your schedule...' 
+                : 'No schedule found for selected date'
+              }
             </p>
+            {/* Show Generate Button only if no response exists */}
             {!state.response && (
-              <Button variant="outline" onClick={handleSubmit} disabled={isLoading}>
+              <Button 
+                variant="outline" 
+                onClick={handleSubmit} 
+                disabled={isLoading}
+              >
                 Generate Schedule
               </Button>
             )}
