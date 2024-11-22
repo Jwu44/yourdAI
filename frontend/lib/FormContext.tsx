@@ -16,6 +16,12 @@ const initialState: FormData = {
     structure: '',
     subcategory: '',
     timeboxed: ''
+  },
+  // Add onboarding progress tracking
+  onboarding: {
+    currentStep: 1,
+    totalSteps: 8, // Default to maximum steps (including conditional pages)
+    isComplete: false
   }
 };
 
@@ -28,8 +34,13 @@ const setNestedProperty = (obj: any, path: string, value: any): any => {
   return obj;
 };
 
-// Create the reducer function
-const formReducer = (state: FormData, action: FormAction): FormData => {
+// Update FormAction type to include progress actions
+type ExtendedFormAction = FormAction | 
+  { type: 'UPDATE_ONBOARDING_PROGRESS'; currentStep: number; totalSteps: number } |
+  { type: 'COMPLETE_ONBOARDING' };
+
+// Create the reducer function with enhanced actions
+const formReducer = (state: FormData, action: ExtendedFormAction): FormData => {
   switch (action.type) {
     case 'UPDATE_FIELD':
       // Handle the special case for form updates
@@ -60,6 +71,25 @@ const formReducer = (state: FormData, action: FormAction): FormData => {
         )
       };
 
+    case 'UPDATE_ONBOARDING_PROGRESS':
+      return {
+        ...state,
+        onboarding: {
+          ...state.onboarding,
+          currentStep: action.currentStep,
+          totalSteps: action.totalSteps
+        }
+      };
+
+    case 'COMPLETE_ONBOARDING':
+      return {
+        ...state,
+        onboarding: {
+          ...state.onboarding,
+          isComplete: true
+        }
+      };
+
     case 'RESET_FORM':
       return initialState;
 
@@ -68,21 +98,39 @@ const formReducer = (state: FormData, action: FormAction): FormData => {
   }
 };
 
-// Update the context creation
-const FormContext = createContext<FormContextType | undefined>(undefined);
+// Update the context type to include onboarding progress
+interface ExtendedFormContextType extends FormContextType {
+  state: FormData & {
+    onboarding?: {
+      currentStep: number;
+      totalSteps: number;
+      isComplete: boolean;
+    }
+  };
+  dispatch: React.Dispatch<ExtendedFormAction>;
+}
 
-// Create a provider component
+// Create the context with extended types
+const FormContext = createContext<ExtendedFormContextType | undefined>(undefined);
+
+// Create a provider component with memoization
 export const FormProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(formReducer, initialState);
 
+  // Memoize the context value to prevent unnecessary rerenders
+  const value = React.useMemo(() => ({ 
+    state, 
+    dispatch 
+  }), [state]);
+
   return (
-    <FormContext.Provider value={{ state, dispatch }}>
+    <FormContext.Provider value={value}>
       {children}
     </FormContext.Provider>
   );
 };
 
-// Create a custom hook to use the form context
+// Create a custom hook to use the form context with type safety
 export const useForm = () => {
   const context = useContext(FormContext);
   if (context === undefined) {
@@ -90,3 +138,6 @@ export const useForm = () => {
   }
   return context;
 };
+
+// Export types for use in other components
+export type { ExtendedFormAction, ExtendedFormContextType };

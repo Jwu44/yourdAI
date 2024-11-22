@@ -6,10 +6,21 @@ import { TypographyH3, TypographyP } from '../fonts/text';
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import CenteredPane from '@/components/parts/CenteredPane';
+import { OnboardingContent } from '@/components/parts/OnboardingContent';
 import { useForm } from '../../lib/FormContext';
 import { useToast } from "@/hooks/use-toast";
 import { submitFormData, extractSchedule } from '@/lib/helper';
+
+/**
+ * Type definitions for timebox preference
+ */
+type TimeboxType = 'timeboxed' | 'untimeboxed' | '';
+
+interface LayoutPreferenceState {
+  structure: string;
+  subcategory?: string;
+  timeboxed: TimeboxType;
+}
 
 const TimeboxPreference: React.FC = () => {
   const { state, dispatch } = useForm();
@@ -17,60 +28,61 @@ const TimeboxPreference: React.FC = () => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize layout preference if it doesn't exist
+  /**
+   * Initialize layout preference if it doesn't exist
+   * Memoized to prevent unnecessary effect triggers
+   */
   useEffect(() => {
-    if (!state.layout_preference?.timeboxed) {
+    try {
+      if (!state.layout_preference?.timeboxed) {
+        dispatch({
+          type: 'UPDATE_FIELD',
+          field: 'layout_preference',
+          value: {
+            ...state.layout_preference,
+            timeboxed: 'timeboxed'
+          } as LayoutPreferenceState
+        });
+      }
+    } catch (error) {
+      console.error('Error initializing timebox preference:', error);
+    }
+  }, [state.layout_preference, dispatch]);
+
+  /**
+   * Handle radio input changes
+   * Memoized to prevent unnecessary recreations
+   */
+  const handleInputChange = useCallback((value: TimeboxType) => {
+    try {
       dispatch({
         type: 'UPDATE_FIELD',
         field: 'layout_preference',
         value: {
           ...state.layout_preference,
-          timeboxed: 'timeboxed'
-        }
+          timeboxed: value
+        } as LayoutPreferenceState
       });
+    } catch (error) {
+      console.error('Error updating timebox preference:', error);
     }
-  }, [state.layout_preference, dispatch]);
+  }, [dispatch, state.layout_preference]);
 
-  const handleInputChange = (value: string) => {
-    dispatch({
-      type: 'UPDATE_FIELD',
-      field: 'layout_preference',
-      value: {
-        ...state.layout_preference,
-        timeboxed: value
-      }
-    });
-  };
-
+  /**
+   * Handle form submission
+   * Includes error handling and loading states
+   */
   const handleSubmit = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Submit form data and get response
       const result = await submitFormData(state);
-      console.log("Submit result:", result); // Debug log
       
-      let scheduleContent = extractSchedule(result);
-      console.log("Extracted schedule:", scheduleContent); // Debug log
+      const scheduleContent = extractSchedule(result);
       
-      if (!scheduleContent) {
-        toast({
-          title: "Error",
-          description: "No valid schedule found in the response",
-          variant: "destructive",
-        });
-        return;
+      if (!scheduleContent || !result.scheduleId) {
+        throw new Error('Invalid response from server');
       }
 
-      if (!result.scheduleId) {
-        toast({
-          title: "Error",
-          description: "No schedule ID received from server",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Update form context
       dispatch({ 
         type: 'UPDATE_FIELD', 
         field: 'formUpdate',
@@ -80,16 +92,11 @@ const TimeboxPreference: React.FC = () => {
         }
       });
 
-      // Verify the updates were successful
-      console.log("Updated form state:", state); // Debug log
-
-      // Show success message
       toast({
         title: "Success",
         description: "Schedule generated successfully",
       });
 
-      // Navigate to dashboard
       router.push('/dashboard');
       
     } catch (error) {
@@ -102,23 +109,32 @@ const TimeboxPreference: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-}, [state, dispatch, toast, router]);
+  }, [state, dispatch, toast, router]);
 
-  const handlePrevious = () => {
+  /**
+   * Navigation handler
+   * Memoized to prevent unnecessary recreations
+   */
+  const handlePrevious = useCallback(() => {
     if (state.layout_preference?.structure === 'structured') {
       router.push('/subcategory-preference');
     } else {
       router.push('/structure-preference');
     }
-  };
+  }, [router, state.layout_preference?.structure]);
 
   return (
-    <CenteredPane heading={<TypographyH3 className="mb-6">Task Timeboxing Preference</TypographyH3>}>
-      <div className="w-full text-left">
-        <TypographyP className="mb-4">
+    <OnboardingContent
+      heading={<TypographyH3>Task Timeboxing Preference</TypographyH3>}
+      description={
+        <TypographyP>
           Would you like your tasks to be timeboxed?
         </TypographyP>
-        
+      }
+    >
+      {/* Main content wrapper */}
+      <div className="w-full max-w-md mx-auto space-y-6">
+        {/* Radio group container */}
         <RadioGroup
           value={state.layout_preference?.timeboxed || ''}
           onValueChange={handleInputChange}
@@ -129,30 +145,51 @@ const TimeboxPreference: React.FC = () => {
               value="timeboxed" 
               id="timeboxed" 
               className="border-white text-white focus:ring-white"
+              aria-label="Enable timeboxed tasks"
             />
-            <Label htmlFor="timeboxed">Yes, I want timeboxed tasks</Label>
+            <Label 
+              htmlFor="timeboxed"
+              className="cursor-pointer"
+            >
+              Yes, I want timeboxed tasks
+            </Label>
           </div>
           <div className="flex items-center space-x-2">
             <RadioGroupItem 
               value="untimeboxed" 
               id="untimeboxed" 
               className="border-white text-white focus:ring-white"
+              aria-label="Disable timeboxed tasks"
             />
-            <Label htmlFor="untimeboxed">No, I prefer flexible timing</Label>
+            <Label 
+              htmlFor="untimeboxed"
+              className="cursor-pointer"
+            >
+              No, I prefer flexible timing
+            </Label>
           </div>
         </RadioGroup>
+
+        {/* Navigation buttons */}
+        <div className="flex justify-end space-x-2">
+          <Button 
+            onClick={handlePrevious} 
+            variant="ghost"
+            type="button"
+            disabled={isLoading}
+          >
+            Previous
+          </Button>
+          <Button 
+            onClick={handleSubmit}
+            type="button"
+            disabled={!state.layout_preference?.timeboxed || isLoading}
+          >
+            {isLoading ? 'Generating Schedule...' : 'Generate Schedule'}
+          </Button>
+        </div>
       </div>
-      
-      <div className="w-full flex justify-end space-x-2 mt-6">
-        <Button onClick={handlePrevious} variant="ghost">Previous</Button>
-        <Button 
-          onClick={handleSubmit} 
-          disabled={!state.layout_preference?.timeboxed || isLoading}
-        >
-          {isLoading ? 'Generating Schedule...' : 'Generate Schedule'}
-        </Button>
-      </div>
-    </CenteredPane>
+    </OnboardingContent>
   );
 };
 

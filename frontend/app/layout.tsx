@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { FormProvider } from "@/lib/FormContext";
 import Image from 'next/image';
+import { OnboardingLayout } from '@/components/parts/OnboardingLayout';
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -32,7 +33,9 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <FormProvider>
-          {children}
+          <OnboardingLayout>
+            {children}
+          </OnboardingLayout>
         </FormProvider>
       </body>
     </html>

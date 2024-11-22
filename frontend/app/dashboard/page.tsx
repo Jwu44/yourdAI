@@ -5,7 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 
 // UI Components
 import { Button } from '@/components/ui/button';
-import { Loader2, ChevronLeft, ChevronRight,  ActivitySquare, Heart, Smile, Trophy  } from 'lucide-react';
+import { Loader2, ActivitySquare, Heart, Smile, Trophy  } from 'lucide-react';
+import FloatingActionButton from '@/components/parts/FloatingActionButton';
+import TaskEditDrawer from '@/components/parts/TaskEditDrawer';
 
 // Custom Components
 import DashboardHeader from '@/components/parts/DashboardHeader';
@@ -36,7 +38,8 @@ import {
   handleEnergyChange,
   loadScheduleForDate,
   updateScheduleForDate, 
-  fetchAISuggestions
+  fetchAISuggestions,
+  formatDateToString
 } from '@/lib/helper';
 
 
@@ -58,7 +61,8 @@ const Dashboard: React.FC = () => {
   const [shouldUpdateSchedule, setShouldUpdateSchedule] = useState(false);
   const [isInitialSchedule, setIsInitialSchedule] = useState(true);
   const [date, setDate] = useState<Date | undefined>(undefined);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false);
+  const [isCalendarDrawerOpen, setIsCalendarDrawerOpen] = useState(false);
   const [scheduleId, setScheduleId] = useState<string | null>(null);
   const [scheduleCache, setScheduleCache] = useState<Map<string, Task[]>>(new Map());
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
@@ -68,27 +72,90 @@ const Dashboard: React.FC = () => {
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [shownSuggestionIds] = useState<Set<string>>(new Set()); // Resets on page refresh
   const [suggestionsMap, setSuggestionsMap] = useState<Map<string, AISuggestion[]>>(new Map());
-
-  const addTask = useCallback(async () => {
-    if (newTask.trim()) {
-      try {
-        const updatedTasks = await handleAddTask(state.tasks || [], newTask, []);
-        dispatch({ type: 'UPDATE_FIELD', field: 'tasks', value: updatedTasks });
-        setNewTask('');
-        toast({
-          title: "Success",
-          description: "Task added successfully.",
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  
+  const addTask = useCallback(async (taskData?: Partial<Task>) => {
+    try {
+      // If taskData is provided (from TaskEditDrawer), use its text
+      // Otherwise use newTask state (from DashboardLeftCol)
+      const taskText = taskData?.text || newTask.trim();
+      
+      if (!taskText) return;
+  
+      const updatedTasks = await handleAddTask(
+        state.tasks || [], 
+        taskText,
+        taskData?.categories || []
+      );
+  
+      // Get the newly created task
+      const newTaskObj = updatedTasks[updatedTasks.length - 1];
+  
+      // If taskData exists (from TaskEditDrawer), merge additional fields
+      const finalTask = taskData ? {
+        ...newTaskObj,
+        start_time: taskData.start_time,
+        end_time: taskData.end_time,
+        is_recurring: taskData.is_recurring,
+        start_date: getDateString(currentDayIndex), // Use currently viewed date
+      } : newTaskObj;
+  
+      // Update tasks state
+      dispatch({ type: 'UPDATE_FIELD', field: 'tasks', value: updatedTasks });
+  
+      // If task is created from TaskEditDrawer, add it to current schedule
+      if (taskData) {
+        setScheduleDays(prevDays => {
+          const newDays = [...prevDays];
+          if (newDays[currentDayIndex]) {
+            newDays[currentDayIndex] = [finalTask, ...newDays[currentDayIndex]];
+          }
+          return newDays;
         });
-      } catch (error) {
-        console.error("Error adding task:", error);
-        toast({
-          title: "Error",
-          description: "Failed to add task. Please try again.",
-          variant: "destructive",
+  
+        // Update schedule cache
+        const currentDate = getDateString(currentDayIndex);
+        setScheduleCache(prevCache => {
+          const newCache = new Map(prevCache);
+          const currentTasks = prevCache.get(currentDate) || [];
+          newCache.set(currentDate, [finalTask, ...currentTasks]);
+          return newCache;
         });
+  
+        // Sync with backend
+        await updateScheduleForDate(
+          getDateString(currentDayIndex),
+          scheduleDays[currentDayIndex]
+        );
       }
+  
+      // Clear input if it's from DashboardLeftCol
+      if (!taskData) {
+        setNewTask('');
+      }
+  
+      toast({
+        title: "Success",
+        description: "Task added successfully.",
+      });
+  
+    } catch (error) {
+      console.error("Error adding task:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add task. Please try again.",
+        variant: "destructive",
+      });
     }
-  }, [newTask, state.tasks, dispatch, toast]);
+  }, [
+    newTask, 
+    state.tasks, 
+    dispatch, 
+    toast, 
+    currentDayIndex, 
+    scheduleDays, 
+    setScheduleDays
+  ]);
 
   const updateTask = useCallback((updatedTask: Task) => {
     const updatedTasks = handleUpdateTask(state.tasks || [], updatedTask);
@@ -376,6 +443,12 @@ const Dashboard: React.FC = () => {
         }
       }
       
+      // Add the new date to available dates
+      setAvailableDates(prevDates => {
+        const uniqueDates = Array.from(new Set([...prevDates, nextDayDate]));
+        return uniqueDates.sort();
+      });
+      
       setCurrentDayIndex(prevIndex => prevIndex + 1);
       toast({
         title: "Success",
@@ -402,35 +475,32 @@ const Dashboard: React.FC = () => {
     handleEnergyChange(dispatch, currentPatterns)(value);
   }, [dispatch, state.energy_patterns]);
 
+  // Update handleDateSelect to handle calendar state properly
   const handleDateSelect = useCallback(async (newDate: Date | undefined) => {
     if (!newDate) {
-      setIsDrawerOpen(false);
+      // Don't close the calendar drawer when no date is selected
       setIsDropdownOpen(false);
       return;
     }
   
     setIsLoadingSchedule(true);
     try {
-      // Fix: Use local date components instead of toISOString()
-      const year = newDate.getFullYear();
-      const month = String(newDate.getMonth() + 1).padStart(2, '0');
-      const day = String(newDate.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
-      
-      console.log('Selected date:', newDate);
-      console.log('Formatted date string:', dateStr);
+      const dateStr = formatDateToString(newDate);
       
       const existingSchedule = await loadScheduleForDate(dateStr);
       
       if (existingSchedule.success && existingSchedule.schedule) {
-        // Update schedule in cache
         setScheduleCache(prevCache => new Map(prevCache).set(dateStr, existingSchedule.schedule!));
-        
-        // Update scheduleDays array with the new schedule
         setScheduleDays([existingSchedule.schedule]);
         setCurrentDayIndex(0);
         setDate(newDate);
         
+        // Update available dates
+        setAvailableDates(prevDates => {
+          const uniqueDates = Array.from(new Set([...prevDates, dateStr]));
+          return uniqueDates.sort();
+        });
+  
         toast({
           title: "Success",
           description: "Schedule loaded successfully",
@@ -451,9 +521,11 @@ const Dashboard: React.FC = () => {
       });
     } finally {
       setIsLoadingSchedule(false);
-      setIsDrawerOpen(false);
+      // Only close the calendar drawer after successful date selection
+      setIsCalendarDrawerOpen(false);
+      setIsDropdownOpen(false);
     }
-}, [setDate, setIsDrawerOpen, toast]);
+  }, [setDate, toast]);
 
 // Handle magic wand click
 const handleRequestSuggestions = useCallback(async () => {
@@ -719,15 +791,19 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
           currentDayIndex={currentDayIndex}
           selectedDate={date}
           isLoadingSuggestions={isLoadingSuggestions}
-          isDrawerOpen={isDrawerOpen}
+          isCalendarDrawerOpen={isCalendarDrawerOpen}  // Updated prop name
           isDropdownOpen={isDropdownOpen}
           state={state}
           onRequestSuggestions={handleRequestSuggestions}
-          onDrawerOpenChange={setIsDrawerOpen}
+          onCalendarDrawerOpenChange={setIsCalendarDrawerOpen}  // Updated prop name
           onDropdownOpenChange={setIsDropdownOpen}
           onDateSelect={handleDateSelect}
           onSubmitForm={handleSubmit}
           isLoading={isLoading}
+          onNextDay={handleNextDay}
+          onPreviousDay={handlePreviousDay}
+          currentDate={date}
+          availableDates={availableDates}
           dashboardLeftColProps={{
             newTask,
             setNewTask,
@@ -774,30 +850,6 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
                 </span>
               </div>
             )}
-  
-            {/* Navigation Controls */}
-            <div className="flex justify-between items-center mt-4 px-8">
-              {/* Previous Day Button */}
-              <Button
-                variant="outline"
-                onClick={handlePreviousDay}
-                disabled={currentDayIndex === 0}
-                className="flex items-center space-x-2"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                <span>Previous Day</span>
-              </Button>
-  
-              {/* Next Day Button */}
-              <Button
-                variant="outline"
-                onClick={handleNextDay}
-                className="flex items-center space-x-2"
-              >
-                <span>Next Day</span>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
           </div>
         ) : (
           // Empty State
@@ -820,6 +872,14 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
             )}
           </div>
         )}
+        {/* Add FloatingActionButton and TaskEditDrawer here */}
+        <FloatingActionButton onClick={() => setIsTaskDrawerOpen(true)} />
+        <TaskEditDrawer
+          isOpen={isTaskDrawerOpen}
+          onClose={() => setIsTaskDrawerOpen(false)}
+          onCreateTask={addTask}
+          currentDate={getDateString(currentDayIndex)}
+        />
       </div>
     </div>
   );

@@ -134,7 +134,7 @@ def update_parsed_schedule():
         print("Exception occurred:", str(e))
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-    
+
 @api_bp.route("/update_task", methods=["POST"])
 def update_task():
     try:

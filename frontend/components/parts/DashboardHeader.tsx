@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { formatDateToString } from '@/lib/helper';
 
 // Custom Components
 import { TypographyH3 } from '@/app/fonts/text';
@@ -28,42 +29,51 @@ interface DashboardHeaderProps {
     currentDayIndex: number;
     selectedDate: Date | undefined;
     isLoadingSuggestions: boolean;
-    isDrawerOpen: boolean;
+    isCalendarDrawerOpen: boolean;  // Updated prop name
     isDropdownOpen: boolean;
     state: FormData;
     onRequestSuggestions: () => Promise<void>;
-    onDrawerOpenChange: (open: boolean) => void;
+    onCalendarDrawerOpenChange: (open: boolean) => void;  // Updated prop name
     onDropdownOpenChange: (open: boolean) => void;
     onDateSelect: (date: Date | undefined) => Promise<void>;
     onSubmitForm: () => Promise<void>;
     isLoading: boolean;
-    dashboardLeftColProps: {
-      newTask: string;
-      setNewTask: (task: string) => void;
-      priorities: Priority[];
-      updateTask: (task: Task) => void;
-      deleteTask: (taskId: string) => void;
-      addTask: () => void;
-      handleReorder: (newPriorities: Priority[]) => void;
-      handleEnergyChange: (value: string) => void;
-    };
-  }
+    onNextDay: () => Promise<void>;
+    onPreviousDay: () => void;
+    currentDate: Date | undefined;
+    availableDates: string[];
+    dashboardLeftColProps:  {
+    newTask: string;
+    setNewTask: (task: string) => void;
+    priorities: Priority[];
+    updateTask: (task: Task) => void;
+    deleteTask: (taskId: string) => void;
+    addTask: () => void;
+    handleReorder: (newPriorities: Priority[]) => void;
+    handleEnergyChange: (value: string) => void;
+  };
+}
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({
-  currentDayIndex,
-  selectedDate,
-  isLoadingSuggestions,
-  isDrawerOpen,
-  isDropdownOpen,
-  state,
-  onRequestSuggestions,
-  onDrawerOpenChange,
-  onDropdownOpenChange,
-  onDateSelect,
-  onSubmitForm,
-  isLoading,
-  dashboardLeftColProps
-}) => {
+    currentDayIndex,
+    selectedDate,
+    isLoadingSuggestions,
+    isCalendarDrawerOpen,     // Updated from isDrawerOpen
+    isDropdownOpen,
+    state,
+    onRequestSuggestions,
+    onCalendarDrawerOpenChange,  // Updated from onDrawerOpenChange
+    onDropdownOpenChange,
+    onDateSelect,
+    onSubmitForm,
+    isLoading,
+    onNextDay,
+    onPreviousDay,
+    currentDate,
+    availableDates,
+    dashboardLeftColProps
+  }) => {
+
   // Memoize the date formatting to prevent unnecessary recalculations
   const formattedDate = useCallback(() => {
     try {
@@ -77,159 +87,145 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     }
   }, [currentDayIndex, selectedDate]);
 
-  // Handle dropdown item selection with error boundary
-  const handleDropdownSelect = useCallback((event: Event) => {
-    try {
-      event.preventDefault();
-      onDrawerOpenChange(true);
-    } catch (error) {
-      console.error('Error handling dropdown selection:', error);
-    }
-  }, [onDrawerOpenChange]);
+  // Helper function to check if previous day is available
+  const isPreviousDayAvailable = useCallback(() => {
+    if (!currentDate || availableDates.length === 0) return false;
+    const currentDateStr = formatDateToString(currentDate);
+    const currentIndex = availableDates.indexOf(currentDateStr);
+    return currentIndex > 0;
+  }, [currentDate, availableDates]);
 
   return (
     <div className="flex justify-between items-center mb-6">
-      {/* Left section: Title and AI Suggestions */}
+      {/* Left section: Title with navigation and AI Suggestions */}
       <div className="flex items-center gap-4">
-        <TypographyH3 className="text-white">
-          {formattedDate()}
-        </TypographyH3>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onRequestSuggestions}
-          disabled={isLoadingSuggestions}
-          className="h-9 w-9"
-          aria-label="Request AI Suggestions"
-        >
-          {isLoadingSuggestions ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Sparkles className="h-5 w-5" />
-          )}
-        </Button>
+        {/* Date display with navigation chevrons */}
+        <div className="flex items-center gap-2">
+          <TypographyH3 className="text-white">
+            {formattedDate()}
+          </TypographyH3>
+          <div className="flex items-center gap-1 ml-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onPreviousDay()}
+              disabled={!isPreviousDayAvailable()}
+              className={`h-9 w-9 transition-opacity ${
+                currentDayIndex === 0 ? 'opacity-50' : 'opacity-100 hover:opacity-80'
+              }`}
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onNextDay()}
+              className="h-9 w-9 hover:opacity-80"
+              aria-label="Next day"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
       </div>
 
-     {/* Right section: Profile Dropdown */}
-    <div className="flex items-center space-x-4">
-      <DropdownMenu 
-        open={isDropdownOpen} 
-        onOpenChange={onDropdownOpenChange}
-      >
-        <DropdownMenuTrigger asChild>
-          <Avatar className="h-10 w-10 cursor-pointer">
-            <AvatarImage 
-              src="/avatar-placeholder.png" 
-              alt="User avatar"
-              onError={(e) => {
-                // Fallback to AvatarFallback on image load error
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-            <AvatarFallback>U</AvatarFallback>
-          </Avatar>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-56 bg-[#1c1c1c] text-white border-gray-700"
-          align="end"
-          alignOffset={-5}
-          sideOffset={5}
+      {/* Right section: AI Suggestions and Profile Dropdown */}
+        <div className="flex items-center space-x-4">
+        {/* Profile Dropdown */}
+        <DropdownMenu 
+            open={isDropdownOpen} 
+            onOpenChange={onDropdownOpenChange}
         >
-          <DropdownMenuLabel className="font-normal">
-            My Account
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator className="bg-gray-700" />
-          
-          {/* Profile Menu Items */}
-          <DropdownMenuItem className="focus:bg-gray-700">
-            <User className="mr-2 h-4 w-4" />
-            <span>Profile</span>
-          </DropdownMenuItem>
-
-          {/* Edit Schedule Sheet Trigger */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <DropdownMenuItem
-                className="focus:bg-gray-700"
-                onSelect={(event) => {
-                  // Prevent the default dropdown close behavior
-                  event.preventDefault();
-                  // Stop event from bubbling up to parent elements
-                  event.stopPropagation();
-                }}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                <span>Edit schedule</span>
-              </DropdownMenuItem>
-            </SheetTrigger>
-            <SheetContent 
-              side="right" 
-              className="w-[400px] sm:w-[540px] p-0"
+            <div className="flex items-center space-x-4">
+            {/* AI suggestions button */}
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={onRequestSuggestions}
+                disabled={isLoadingSuggestions}
+                className="h-9 w-9"
+                aria-label="Request AI Suggestions"
             >
-              <DashboardLeftCol
-                {...state}
-                {...dashboardLeftColProps}
-                submitForm={onSubmitForm}
-                isLoading={isLoading}
-              />
-            </SheetContent>
-          </Sheet>
+                {isLoadingSuggestions ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                <Sparkles className="h-5 w-5" />
+                )}
+            </Button>
 
-          {/* Calendar Drawer Trigger */}
-          <Drawer open={isDrawerOpen} onOpenChange={onDrawerOpenChange}>
-            <DrawerTrigger asChild>
-              <DropdownMenuItem
-                className="focus:bg-gray-700"
-                onSelect={handleDropdownSelect}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                <span>Schedules</span>
-              </DropdownMenuItem>
-            </DrawerTrigger>
-              <DrawerContent className="bg-[#1c1c1c] text-white border-t border-gray-700">
-                <div className="flex justify-center items-center min-h-[20vh] py-2">
-                <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={onDateSelect}
-                        initialFocus
-                        className="mx-auto"
-                        classNames={{
-                          months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-                          month: "space-y-4",
-                          caption: "flex justify-center pt-1 relative items-center",
-                          caption_label: "text-sm font-medium",
-                          nav: "space-x-1 flex items-center",
-                          nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-                          nav_button_previous: "absolute left-1",
-                          nav_button_next: "absolute right-1",
-                          table: "w-full border-collapse space-y-1",
-                          head_row: "flex",
-                          head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
-                          row: "flex w-full mt-2",
-                          cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                          day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100",
-                          day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-                          day_today: "bg-accent text-accent-foreground",
-                          day_outside: "text-muted-foreground opacity-50",
-                          day_disabled: "text-muted-foreground opacity-50",
-                          day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
-                          day_hidden: "invisible",
-                        }}
-                    components={{
-                      IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
-                      IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
+            {/* Avatar Trigger */}
+            <DropdownMenuTrigger asChild>
+                <Avatar className="h-9 w-9 cursor-pointer">
+                <AvatarImage 
+                    src="/avatar-placeholder.png" 
+                    alt="User avatar"
+                    onError={(e) => {
+                    e.currentTarget.style.display = 'none';
                     }}
-                  />
-                </div>
-              </DrawerContent>
-            </Drawer>
+                />
+                <AvatarFallback>U</AvatarFallback>
+                </Avatar>
+            </DropdownMenuTrigger>
+            </div>
+          <DropdownMenuContent
+            className="w-56 bg-[#1c1c1c] text-white border-gray-700"
+            align="end"
+            alignOffset={-5}
+            sideOffset={5}
+          >
+            <DropdownMenuLabel className="font-normal">
+              My Account
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator className="bg-gray-700" />
+            
+            {/* Profile Menu Items */}
+            <DropdownMenuItem className="focus:bg-gray-700">
+              <User className="mr-2 h-4 w-4" />
+              <span>Profile</span>
+            </DropdownMenuItem>
+
+            {/* Edit Schedule Sheet Trigger */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <DropdownMenuItem
+                  className="focus:bg-gray-700"
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  <span>Edit schedule</span>
+                </DropdownMenuItem>
+              </SheetTrigger>
+              <SheetContent 
+                side="right" 
+                className="w-[400px] sm:w-[540px] p-0"
+              >
+                <DashboardLeftCol
+                  {...state}
+                  {...dashboardLeftColProps}
+                  submitForm={onSubmitForm}
+                  isLoading={isLoading}
+                />
+              </SheetContent>
+            </Sheet>
+
+            {/* Calendar Menu Item - Separated from Drawer */}
+            <DropdownMenuItem
+              className="focus:bg-gray-700"
+              onSelect={(event) => {
+                event.preventDefault();
+                onCalendarDrawerOpenChange(true);
+                onDropdownOpenChange(false);
+              }}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              <span>Schedules</span>
+            </DropdownMenuItem>
 
             {/* Additional Menu Items */}
-            <DropdownMenuItem className="focus:bg-gray-700">
-              <CreditCard className="mr-2 h-4 w-4" />
-              <span>Subscription</span>
-            </DropdownMenuItem>
             <DropdownMenuItem className="focus:bg-gray-700">
               <Settings className="mr-2 h-4 w-4" />
               <span>Settings</span>
@@ -241,10 +237,53 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Separate Calendar Drawer */}
+        <Drawer 
+          open={isCalendarDrawerOpen} 
+          onOpenChange={onCalendarDrawerOpenChange}
+        >
+          <DrawerContent className="bg-[#1c1c1c] text-white border-t border-gray-700">
+            <div className="flex justify-center items-center min-h-[20vh] py-2">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={onDateSelect}
+                initialFocus
+                className="mx-auto"
+                classNames={{
+                  months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
+                  month: "space-y-4",
+                  caption: "flex justify-center pt-1 relative items-center",
+                  caption_label: "text-sm font-medium",
+                  nav: "space-x-1 flex items-center",
+                  nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+                  nav_button_previous: "absolute left-1",
+                  nav_button_next: "absolute right-1",
+                  table: "w-full border-collapse space-y-1",
+                  head_row: "flex",
+                  head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
+                  row: "flex w-full mt-2",
+                  cell: "text-center text-sm p-0 relative [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                  day: "h-9 w-9 p-0 font-normal aria-selected:opacity-100",
+                  day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+                  day_today: "bg-accent text-accent-foreground",
+                  day_outside: "text-muted-foreground opacity-50",
+                  day_disabled: "text-muted-foreground opacity-50",
+                  day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                  day_hidden: "invisible",
+                }}
+                components={{
+                  IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
+                  IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
+                }}
+              />
+            </div>
+          </DrawerContent>
+        </Drawer>
       </div>
     </div>
   );
 };
 
-// Memoize the component to prevent unnecessary re-renders
 export default React.memo(DashboardHeader);

@@ -31,8 +31,10 @@ import {
 interface TaskEditDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  task: Task;
-  onUpdateTask: (task: Task) => void;
+  task?: Task;
+  onUpdateTask?: (task: Task) => void;
+  onCreateTask?: (task: Task) => void;
+  currentDate: string;
 }
 
 const categories = ['Exercise', 'Relationships', 'Fun', 'Ambition', 'Work'];
@@ -42,12 +44,39 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
   onClose,
   task,
   onUpdateTask,
+  onCreateTask,
+  currentDate,
 }) => {
-  // Initialize edited task with proper recurrence type
-  const [editedTask, setEditedTask] = useState<Task>(() => ({
-    ...task,
-    is_recurring: task.is_recurring || null,
-  }));
+  // Determine if we're in create mode (no task provided)
+  const isCreateMode = !task;
+
+  // Initialize empty task state with all required fields
+  const getEmptyTask = (): Task => ({
+    id: '',
+    text: '',
+    type: 'task',
+    is_section: false,
+    categories: [],
+    start_time: '',
+    end_time: '',
+    is_recurring: null,
+    completed: false,
+    is_subtask: false,
+    section: null,
+    parent_id: null,
+    level: 0,
+    section_index: 0,
+    start_date: currentDate,
+    energy_level_required: 'medium'
+  });
+
+  // Initialize state with either empty task or existing task
+  const [editedTask, setEditedTask] = useState<Task>(() => {
+    if (isCreateMode) {
+      return getEmptyTask();
+    }
+    return { ...task } as Task;
+  });
 
   // Cleanup ref for pointer events
   const needsCleanup = useRef(false);
@@ -68,21 +97,28 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     };
   }, [isOpen]);
 
+  // Reset form when drawer is opened/closed
+  useEffect(() => {
+    if (isOpen && isCreateMode) {
+      setEditedTask(getEmptyTask());
+    }
+  }, [isOpen, isCreateMode, currentDate]);
+
   // Get current day of week from task's date or today
   const getCurrentDayOfWeek = useCallback((): WeekDay => {
     try {
-      const date = task.start_date ? parseISO(task.start_date) : new Date();
+      const date = task?.start_date ? parseISO(task.start_date) : new Date();
       return format(date, 'EEEE') as WeekDay;
     } catch (error) {
       console.error('Error getting day of week:', error);
       return format(new Date(), 'EEEE') as WeekDay;
     }
-  }, [task.start_date]);
+  }, [task?.start_date]);
 
   // Get week of month (first, second, third, fourth, last)
   const getWeekOfMonth = useCallback((): MonthWeek => {
     try {
-      const date = task.start_date ? parseISO(task.start_date) : new Date();
+      const date = task?.start_date ? parseISO(task.start_date) : new Date();
       const dayOfMonth = date.getDate();
       
       if (dayOfMonth >= 1 && dayOfMonth <= 7) return 'first';
@@ -94,7 +130,7 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
       console.error('Error getting week of month:', error);
       return 'first';
     }
-  }, [task.start_date]);
+  }, [task?.start_date]);
 
   // Format recurrence label with current day/week
   const getRecurrenceLabel = useCallback((option: typeof RECURRENCE_OPTIONS[0]): string => {
@@ -153,7 +189,6 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
       }));
     } catch (error) {
       console.error('Error setting recurrence:', error);
-      // Reset to no recurrence on error
       setEditedTask(prev => ({
         ...prev,
         is_recurring: null
@@ -173,29 +208,36 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     }
   };
 
-  // Handle save
+  // Handle save with form reset
   const handleSave = useCallback(() => {
     try {
-      const updatedTask = {
-        ...editedTask,
-        type: task.type,
-        is_section: task.is_section,
-        id: task.id,
-      };
-      onUpdateTask(updatedTask);
+      if (!editedTask.text.trim()) {
+        return;
+      }
+
+      if (isCreateMode && onCreateTask) {
+        onCreateTask({
+          ...editedTask,
+          id: '',
+        });
+      } else if (onUpdateTask) {
+        onUpdateTask(editedTask);
+      }
     } catch (error) {
       console.error('Error saving task:', error);
     } finally {
+      setEditedTask(getEmptyTask());
       onClose();
     }
-  }, [editedTask, task, onUpdateTask, onClose]);
+  }, [editedTask, isCreateMode, onCreateTask, onUpdateTask, onClose]);
 
-  // Handle close
+  // Handle close with form reset
   const handleClose = useCallback(() => {
     if (needsCleanup.current) {
       document.body.style.pointerEvents = 'auto';
       needsCleanup.current = false;
     }
+    setEditedTask(getEmptyTask());
     onClose();
   }, [onClose]);
 

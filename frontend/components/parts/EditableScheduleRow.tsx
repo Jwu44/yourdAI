@@ -534,6 +534,7 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
           onClose={handleDrawerClose}
           task={task}
           onUpdateTask={handleTaskUpdate}
+          currentDate={task.start_date || new Date().toISOString().split('T')[0]} // Add current date prop
         />
       ) : null}
     </motion.div>
