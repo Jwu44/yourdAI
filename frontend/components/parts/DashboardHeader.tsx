@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { format as dateFormat } from 'date-fns';
 import { Loader2, Sparkles, User, CalendarIcon, CreditCard, Settings, LogOut, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 
@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatDateToString } from '@/lib/helper';
+import { formatDateToString, checkScheduleExists } from '@/lib/helper';
 
 // Custom Components
 import { TypographyH3 } from '@/app/fonts/text';
@@ -41,7 +41,6 @@ interface DashboardHeaderProps {
     onNextDay: () => Promise<void>;
     onPreviousDay: () => void;
     currentDate: Date | undefined;
-    availableDates: string[];
     dashboardLeftColProps:  {
     newTask: string;
     setNewTask: (task: string) => void;
@@ -70,30 +69,67 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     onNextDay,
     onPreviousDay,
     currentDate,
-    availableDates,
     dashboardLeftColProps
   }) => {
+    // State to track button disabled states
+  const [isPrevDisabled, setIsPrevDisabled] = useState(true);
+  const [isNextDisabled, setIsNextDisabled] = useState(false);
 
   // Memoize the date formatting to prevent unnecessary recalculations
   const formattedDate = useCallback(() => {
     try {
-      const currentDate = new Date();
-      currentDate.setDate(currentDate.getDate() + currentDayIndex);
-      const displayDate = selectedDate || currentDate;
-      return dateFormat(displayDate, 'EEEE, MMMM d');
+      if (!currentDate) return 'Invalid Date';
+      return dateFormat(currentDate, 'EEEE, MMMM d');
     } catch (error) {
       console.error('Error formatting date:', error);
       return 'Invalid Date';
     }
-  }, [currentDayIndex, selectedDate]);
+  }, [currentDate]);
 
-  // Helper function to check if previous day is available
-  const isPreviousDayAvailable = useCallback(() => {
-    if (!currentDate || availableDates.length === 0) return false;
-    const currentDateStr = formatDateToString(currentDate);
-    const currentIndex = availableDates.indexOf(currentDateStr);
-    return currentIndex > 0;
-  }, [currentDate, availableDates]);
+  // Memoized function to check if previous day is available
+  const isPreviousDayAvailable = useCallback(async (): Promise<boolean> => {
+    if (!currentDate) return false;
+    
+    const yesterday = new Date(currentDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Check if yesterday's schedule exists using helper function
+    return await checkScheduleExists(yesterday);
+  }, [currentDate]);
+
+  // Memoized function to check if next day is available
+  const isNextDayAvailable = useCallback(async (): Promise<boolean> => {
+    if (!currentDate) return false;
+    
+    const tomorrow = new Date(currentDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    // Allow navigation to next day if it's tomorrow (can generate new schedule)
+    const actualTomorrow = new Date();
+    actualTomorrow.setDate(actualTomorrow.getDate() + 1);
+    
+    if (tomorrow.toDateString() === actualTomorrow.toDateString()) {
+      return true;
+    }
+    
+    // Check if next day's schedule exists using helper function
+    return await checkScheduleExists(tomorrow);
+  }, [currentDate]);
+
+  // Effect to update button states
+  useEffect(() => {
+    const updateNavigationStates = async () => {
+      const [prevAvailable, nextAvailable] = await Promise.all([
+        isPreviousDayAvailable(),
+        isNextDayAvailable()
+      ]);
+      
+      setIsPrevDisabled(!prevAvailable);
+      setIsNextDisabled(!nextAvailable);
+    };
+
+    updateNavigationStates();
+  }, [currentDate, isPreviousDayAvailable, isNextDayAvailable]);
 
   return (
     <div className="flex justify-between items-center mb-6">
@@ -101,73 +137,75 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       <div className="flex items-center gap-4">
         {/* Date display with navigation chevrons */}
         <div className="flex items-center gap-2">
+          {/* AI suggestions button - Positioned before the date */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onRequestSuggestions}
+            disabled={isLoadingSuggestions}
+            className="h-9 w-9"
+            aria-label="Request AI Suggestions"
+          >
+            {isLoadingSuggestions ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Sparkles className="h-5 w-5" />
+            )}
+          </Button>
+  
           <TypographyH3 className="text-white">
             {formattedDate()}
           </TypographyH3>
-          <div className="flex items-center gap-1 ml-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onPreviousDay()}
-              disabled={!isPreviousDayAvailable()}
-              className={`h-9 w-9 transition-opacity ${
-                currentDayIndex === 0 ? 'opacity-50' : 'opacity-100 hover:opacity-80'
-              }`}
-              aria-label="Previous day"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onNextDay()}
-              className="h-9 w-9 hover:opacity-80"
-              aria-label="Next day"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
+            <div className="flex items-center gap-1 ml-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onPreviousDay()}
+                disabled={isPrevDisabled}
+                className={`h-9 w-9 transition-opacity ${
+                  isPrevDisabled ? 'opacity-50' : 'opacity-100 hover:opacity-80'
+                }`}
+                aria-label="Previous day"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onNextDay()}
+                disabled={isNextDisabled}
+                className={`h-9 w-9 transition-opacity ${
+                  isNextDisabled ? 'opacity-50' : 'opacity-100 hover:opacity-80'
+                }`}
+                aria-label="Next day"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
           </div>
         </div>
       </div>
-
-      {/* Right section: AI Suggestions and Profile Dropdown */}
-        <div className="flex items-center space-x-4">
+  
+      {/* Right section: Profile Dropdown */}
+      <div className="flex items-center space-x-4">
         {/* Profile Dropdown */}
         <DropdownMenu 
-            open={isDropdownOpen} 
-            onOpenChange={onDropdownOpenChange}
+          open={isDropdownOpen} 
+          onOpenChange={onDropdownOpenChange}
         >
-            <div className="flex items-center space-x-4">
-            {/* AI suggestions button */}
-            <Button
-                variant="ghost"
-                size="icon"
-                onClick={onRequestSuggestions}
-                disabled={isLoadingSuggestions}
-                className="h-9 w-9"
-                aria-label="Request AI Suggestions"
-            >
-                {isLoadingSuggestions ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                <Sparkles className="h-5 w-5" />
-                )}
-            </Button>
-
-            {/* Avatar Trigger */}
-            <DropdownMenuTrigger asChild>
-                <Avatar className="h-9 w-9 cursor-pointer">
-                <AvatarImage 
-                    src="/avatar-placeholder.png" 
-                    alt="User avatar"
-                    onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                    }}
-                />
-                <AvatarFallback>U</AvatarFallback>
-                </Avatar>
-            </DropdownMenuTrigger>
-            </div>
+          {/* Avatar Trigger */}
+          <DropdownMenuTrigger asChild>
+            <Avatar className="h-9 w-9 cursor-pointer">
+              <AvatarImage 
+                src="/avatar-placeholder.png" 
+                alt="User avatar"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+              <AvatarFallback>U</AvatarFallback>
+            </Avatar>
+          </DropdownMenuTrigger>
+  
           <DropdownMenuContent
             className="w-56 bg-[#1c1c1c] text-white border-gray-700"
             align="end"
@@ -184,7 +222,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
             </DropdownMenuItem>
-
+  
             {/* Edit Schedule Sheet Trigger */}
             <Sheet>
               <SheetTrigger asChild>
@@ -211,7 +249,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 />
               </SheetContent>
             </Sheet>
-
+  
             {/* Calendar Menu Item - Separated from Drawer */}
             <DropdownMenuItem
               className="focus:bg-gray-700"
@@ -224,7 +262,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               <CalendarIcon className="mr-2 h-4 w-4" />
               <span>Schedules</span>
             </DropdownMenuItem>
-
+  
             {/* Additional Menu Items */}
             <DropdownMenuItem className="focus:bg-gray-700">
               <Settings className="mr-2 h-4 w-4" />
@@ -237,7 +275,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
+  
         {/* Separate Calendar Drawer */}
         <Drawer 
           open={isCalendarDrawerOpen} 

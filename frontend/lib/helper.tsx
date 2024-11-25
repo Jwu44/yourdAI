@@ -1078,3 +1078,30 @@ export const formatDateToString = (date: Date): string => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+/**
+ * Check if a schedule exists for a specific date
+ * @param date The date to check for schedule existence
+ * @returns Promise<boolean> indicating if a schedule exists
+ */
+export const checkScheduleExists = async (date: Date): Promise<boolean> => {
+  try {
+    // Format date for API
+    const dateStr = formatDateToString(date);
+    
+    // Use the range endpoint with a single day range for efficiency
+    const response = await fetch(
+      `${API_BASE_URL}/schedules/range?start_date=${dateStr}&end_date=${dateStr}`
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to check schedule existence');
+    }
+
+    const data = await response.json();
+    return data.schedules.length > 0;
+  } catch (error) {
+    console.error('Error checking schedule:', error);
+    return false;
+  }
+};

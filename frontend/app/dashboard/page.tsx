@@ -72,8 +72,14 @@ const Dashboard: React.FC = () => {
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [shownSuggestionIds] = useState<Set<string>>(new Set()); // Resets on page refresh
   const [suggestionsMap, setSuggestionsMap] = useState<Map<string, AISuggestion[]>>(new Map());
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
-  
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());  // Initialize with today's date
+  useEffect(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + currentDayIndex);
+    console.log('Setting currentDate:', date);
+    setCurrentDate(date);
+  }, [currentDayIndex]);
+
   const addTask = useCallback(async (taskData?: Partial<Task>) => {
     try {
       // If taskData is provided (from TaskEditDrawer), use its text
@@ -409,6 +415,7 @@ const Dashboard: React.FC = () => {
 
   const handleNextDay = useCallback(async () => {
     const nextDayDate = getDateString(currentDayIndex + 1);
+    console.log('Next day date:', nextDayDate);
     
     // First check if we have this day's schedule in cache
     if (scheduleCache.has(nextDayDate)) {
@@ -438,18 +445,20 @@ const Dashboard: React.FC = () => {
         if (result.success && result.schedule) {
           setScheduleDays(prevDays => [...prevDays, result.schedule!]);
           setScheduleCache(prevCache => new Map(prevCache).set(nextDayDate, result.schedule!));
+          
+          // Update both currentDayIndex and date
+          setCurrentDayIndex(prevIndex => prevIndex + 1);
+          // Convert nextDayDate string to Date object
+          setDate(new Date(nextDayDate));
         } else {
           throw new Error(result.error || 'Failed to generate schedule');
         }
       }
       
-      // Add the new date to available dates
-      setAvailableDates(prevDates => {
-        const uniqueDates = Array.from(new Set([...prevDates, nextDayDate]));
-        return uniqueDates.sort();
+      setCurrentDayIndex(prevIndex => {
+        console.log('Setting new currentDayIndex:', prevIndex + 1);
+        return prevIndex + 1;
       });
-      
-      setCurrentDayIndex(prevIndex => prevIndex + 1);
       toast({
         title: "Success",
         description: "Next day's schedule loaded successfully.",
@@ -466,9 +475,14 @@ const Dashboard: React.FC = () => {
 
   const handlePreviousDay = useCallback(() => {
     if (currentDayIndex > 0) {
+      // Get previous day's date
+      const prevDate = new Date(date!);
+      prevDate.setDate(prevDate.getDate() - 1);
+      
       setCurrentDayIndex(prevIndex => prevIndex - 1);
+      setDate(prevDate);  // Update the date state
     }
-  }, [currentDayIndex]);
+  }, [currentDayIndex, date]);
 
   const handleEnergyChangeCallback = useCallback((value: string) => {
     const currentPatterns = state.energy_patterns || [];
@@ -494,12 +508,6 @@ const Dashboard: React.FC = () => {
         setScheduleDays([existingSchedule.schedule]);
         setCurrentDayIndex(0);
         setDate(newDate);
-        
-        // Update available dates
-        setAvailableDates(prevDates => {
-          const uniqueDates = Array.from(new Set([...prevDates, dateStr]));
-          return uniqueDates.sort();
-        });
   
         toast({
           title: "Success",
@@ -802,8 +810,7 @@ const handleRejectSuggestion = useCallback((suggestionId: string) => {
           isLoading={isLoading}
           onNextDay={handleNextDay}
           onPreviousDay={handlePreviousDay}
-          currentDate={date}
-          availableDates={availableDates}
+          currentDate={currentDate}
           dashboardLeftColProps={{
             newTask,
             setNewTask,
