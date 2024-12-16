@@ -10,6 +10,7 @@
     "babel-plugin-polyfill-corejs3": "^0.8.7",
     "babel-plugin-polyfill-es-shims": "^0.10.5",
     "babel-plugin-polyfill-regenerator": "^0.5.5",
+    "firebase": "^11.0.2",
     "flask": "^0.2.10",
     "lucide-react": "^0.437.0",
     "uuid": "^10.0.0"

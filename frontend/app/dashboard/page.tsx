@@ -489,51 +489,73 @@ const Dashboard: React.FC = () => {
     handleEnergyChange(dispatch, currentPatterns)(value);
   }, [dispatch, state.energy_patterns]);
 
-  // Update handleDateSelect to handle calendar state properly
   const handleDateSelect = useCallback(async (newDate: Date | undefined) => {
-    if (!newDate) {
-      // Don't close the calendar drawer when no date is selected
-      setIsDropdownOpen(false);
-      return;
-    }
-  
-    setIsLoadingSchedule(true);
-    try {
-      const dateStr = formatDateToString(newDate);
-      
-      const existingSchedule = await loadScheduleForDate(dateStr);
-      
-      if (existingSchedule.success && existingSchedule.schedule) {
-        setScheduleCache(prevCache => new Map(prevCache).set(dateStr, existingSchedule.schedule!));
-        setScheduleDays([existingSchedule.schedule]);
-        setCurrentDayIndex(0);
-        setDate(newDate);
-  
-        toast({
-          title: "Success",
-          description: "Schedule loaded successfully",
-        });
-      } else {
-        toast({
-          title: "Notice",
-          description: "No schedule found for selected date",
-          variant: "default",
-        });
-      }
-    } catch (error) {
-      console.error("Error loading schedule:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load schedule",
-        variant: "destructive",
+  if (!newDate) {
+    setIsDropdownOpen(false);
+    return;
+  }
+
+  setIsLoadingSchedule(true);
+  try {
+    const dateStr = formatDateToString(newDate);
+    
+    // Calculate date differences first
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selectedDate = new Date(newDate);
+    selectedDate.setHours(0, 0, 0, 0);
+    const diffTime = selectedDate.getTime() - today.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    // Always update the date states regardless of schedule existence
+    setCurrentDayIndex(diffDays);
+    setDate(newDate);
+    setCurrentDate(newDate);
+
+    // Now try to load the schedule
+    const existingSchedule = await loadScheduleForDate(dateStr);
+    
+    if (existingSchedule.success && existingSchedule.schedule) {
+      // Update schedule states
+      setScheduleCache(prevCache => new Map(prevCache).set(dateStr, existingSchedule.schedule!));
+      setScheduleDays(prevDays => {
+        // Preserve existing days and add/update the selected day
+        const newDays = [...prevDays];
+        newDays[diffDays] = existingSchedule.schedule!;
+        return newDays;
       });
-    } finally {
-      setIsLoadingSchedule(false);
-      // Only close the calendar drawer after successful date selection
-      setIsCalendarDrawerOpen(false);
-      setIsDropdownOpen(false);
+
+      toast({
+        title: "Success",
+        description: "Schedule loaded successfully",
+      });
+    } else {
+      // Clear schedule for this day but keep the date states
+      setScheduleDays(prevDays => {
+        const newDays = [...prevDays];
+        newDays[diffDays] = [];
+        return newDays;
+      });
+
+      toast({
+        title: "Notice",
+        description: "No schedule found for selected date",
+        variant: "default",
+      });
     }
-  }, [setDate, toast]);
+  } catch (error) {
+    console.error("Error loading schedule:", error);
+    toast({
+      title: "Error",
+      description: "Failed to load schedule",
+      variant: "destructive",
+    });
+  } finally {
+    setIsLoadingSchedule(false);
+    setIsCalendarDrawerOpen(false);
+    setIsDropdownOpen(false);
+  }
+}, [setDate, toast]);
 
 // Handle magic wand click
 const handleRequestSuggestions = useCallback(async () => {

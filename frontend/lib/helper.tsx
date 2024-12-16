@@ -1,57 +1,12 @@
 import { categorizeTask } from './api';
 import { v4 as uuidv4 } from 'uuid';
-import { Task, FormAction, LayoutPreference, MonthWeek, RecurrenceType, DecompositionRequest, DecompositionResponse, MicrostepFeedback, FeedbackResponse, FormData, GetAISuggestionsResponse  } from './types';
+import { Task, ScheduleDocument, ScheduleResponse, ScheduleMetadata, TimeSlot, GoogleCalendarEvent, FormAction, LayoutPreference, WeekDay, MonthWeek, RecurrenceType, DecompositionRequest, DecompositionResponse, MicrostepFeedback, FeedbackResponse, FormData, GetAISuggestionsResponse  } from './types';
 import { format as dateFormat } from 'date-fns';
+import memoize from 'lodash/memoize'
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
 const today = new Date().toISOString().split('T')[0];
-
-interface ScheduleDocument {
-  date: string;
-  tasks: Task[];
-  userId: string;
-  inputs: {
-    name: string;
-    age: string;
-    work_start_time: string;
-    work_end_time: string;
-    energy_patterns: string[];
-    layout_preference: {
-      structure: 'structured' | 'unstructured';
-      subcategory: string;
-      timeboxed: 'timeboxed' | 'untimeboxed';
-    };
-    priorities: {
-      health: string;
-      relationships: string;
-      fun_activities: string;
-      ambitions: string;
-    };
-    tasks: string[];
-  };
-  schedule: Task[];
-  metadata?: {
-    createdAt: string;
-    lastModified: string;
-  };
-}
-
-interface ScheduleResponse {
-  _id: string;
-  date: string;
-  tasks: Task[];
-  metadata: {
-    createdAt: string;
-    lastModified: string;
-  };
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
 
 export const handleSimpleInputChange = (setFormData: React.Dispatch<React.SetStateAction<FormData>>) => 
   (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -309,11 +264,44 @@ const syncParsedScheduleWithBackend = async (scheduleId: string, parsedTasks: Ta
   }
 };
 
+// Add this utility function before generateNextDaySchedule
+const fetchWithTimeout = async (url: string, options: RequestInit, timeout = 5000) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
+
+const isValidRecurringTask = (task: Task): task is Task & { 
+  is_recurring: NonNullable<RecurrenceType> 
+} => {
+  return task.is_recurring !== null && 
+         task.is_recurring !== undefined && 
+         typeof task.is_recurring === 'object' &&
+         'frequency' in task.is_recurring;
+};
+
 export const generateNextDaySchedule = async (
   currentSchedule: Task[],
   userData: FormData,
   previousSchedules: Task[][] = []
-): Promise<{ success: boolean; schedule?: Task[]; error?: string; warning?: string }> => {
+): Promise<{
+  success: boolean;
+  schedule?: Task[];
+  error?: string;
+  warning?: string;
+  metadata: ScheduleMetadata;
+}> => {
   console.log("Starting next day schedule generation process");
 
   try {
@@ -322,219 +310,239 @@ export const generateNextDaySchedule = async (
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-    // First, check if schedule for tomorrow already exists
     try {
       const existingSchedule = await loadScheduleForDate(tomorrowStr);
       if (existingSchedule.success && existingSchedule.schedule) {
         console.log("Found existing schedule for tomorrow");
-        return existingSchedule;
+        return {
+          ...existingSchedule,
+          metadata: {
+            totalTasks: existingSchedule.schedule.filter(task => !task.is_section).length,
+            calendarEvents: existingSchedule.schedule.filter(task => Boolean(task.gcal_event_id)).length,
+            recurringTasks: existingSchedule.schedule.filter(task => Boolean(task.is_recurring)).length,
+            generatedAt: new Date().toISOString()
+          }
+        };
       }
     } catch (error) {
       console.error("Error checking existing schedule:", error);
       // Continue with generation if check fails
     }
 
-    // Step 1: Separate tasks into recurring and non-recurring
-    // Use type predicate for better type safety
-    const isRecurringTask = (task: Task): boolean => 
-      task.is_recurring !== null && 
-      typeof task.is_recurring === 'object' && 
-      'frequency' in task.is_recurring;
+    // Enhanced calendar sync with better error handling and type safety
+    let calendarTasks: Task[] = [];
+    const categoryCache: Record<string, string[]> = {}; // Cache for task categorization
 
+    if (userData.user?.calendar?.connected) {
+      try {
+        const calendarResponse = await fetch(`${API_BASE_URL}/calendar/sync/next-day`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userId: userData.user.googleId,
+            date: tomorrowStr
+          })
+        });
+
+        if (!calendarResponse.ok) {
+          console.warn('Failed to sync calendar events:', await calendarResponse.text());
+        } else {
+          const calendarData = await calendarResponse.json();
+          if (calendarData.success && Array.isArray(calendarData.events)) {
+            // Convert calendar events to tasks in parallel with improved error handling
+            const calendarTaskPromises = calendarData.events.map((event: GoogleCalendarEvent) => 
+              convertGCalEventToTask(event, categoryCache, tomorrowStr)
+                .catch(error => {
+                  console.error(`Failed to convert calendar event ${event.id}:`, error);
+                  return null;
+                })
+            );
+
+            const calendarTaskResults = await Promise.all(calendarTaskPromises);
+            calendarTasks = calendarTaskResults.filter((task): task is Task => 
+              task !== null && !task.is_section
+            );
+
+            console.log(`Successfully synced ${calendarTasks.length} calendar events`);
+          }
+        }
+      } catch (error) {
+        console.error('Calendar sync error:', error);
+        // Continue with schedule generation even if calendar sync fails
+      }
+    }
+
+    // Step 1: Process recurring tasks
     const { recurringTasks, nonRecurringTasks } = currentSchedule.reduce<{
       recurringTasks: Task[];
       nonRecurringTasks: Task[];
     }>(
       (acc, task) => {
-        if (isRecurringTask(task)) {
+        if (isValidRecurringTask(task)) {
           acc.recurringTasks.push(task);
         } else if (!task.is_section && !task.completed) {
-          // Only include non-recurring, incomplete tasks
           acc.nonRecurringTasks.push(task);
         }
         return acc;
       },
       { recurringTasks: [], nonRecurringTasks: [] }
     );
+    // Step 2: Get existing recurring tasks with timeout and error handling
+    let existingRecurringTasks: Task[] = [];
+    try {
+      const existingRecurringTasksResponse = await fetchWithTimeout(
+        `${API_BASE_URL}/get_recurring_tasks`,
+        {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
 
-    // Step 2: Get recurring tasks from both APIs with timeout and retry logic
-    const fetchWithTimeout = async (url: string, options: RequestInit, timeout = 5000) => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-      try {
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        return response;
-      } catch (error) {
-        clearTimeout(timeoutId);
-        throw error;
+      if (existingRecurringTasksResponse.ok) {
+        const existingRecurringTasksData = await existingRecurringTasksResponse.json();
+        existingRecurringTasks = existingRecurringTasksData.recurring_tasks || [];
+      } else {
+        console.warn('Failed to fetch recurring tasks:', await existingRecurringTasksResponse.text());
       }
-    };
-
-    const [recurringTasksResponse, existingRecurringTasksResponse] = await Promise.all([
-      fetchWithTimeout(`${API_BASE_URL}/identify_recurring_tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          current_schedule: currentSchedule,
-          previous_schedules: previousSchedules
-        })
-      }),
-      fetchWithTimeout(`${API_BASE_URL}/get_recurring_tasks`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
-      })
-    ]).catch(error => {
+    } catch (error) {
       console.error("Error fetching recurring tasks:", error);
-      throw new Error('Failed to fetch recurring tasks');
-    });
-
-    if (!recurringTasksResponse.ok || !existingRecurringTasksResponse.ok) {
-      throw new Error('Failed to fetch recurring tasks');
+      // Continue with empty existing recurring tasks
     }
 
-    const [recurringTasksData, existingRecurringTasksData] = await Promise.all([
-      recurringTasksResponse.json(),
-      existingRecurringTasksResponse.json()
-    ]);
-
-    // Step 3: Process recurring tasks for tomorrow using memoization
-    const memoizedGetWeekOfMonth = memoize(getWeekOfMonth);
-    const memoizedFormat = memoize((date: Date, format: string) => dateFormat(date, format));
-
-    // Add type guard to check if task has valid recurring properties
-    const isValidRecurringTask = (task: Task): task is Task & { 
-      is_recurring: NonNullable<RecurrenceType> 
-    } => {
-      return task.is_recurring !== null && 
-            task.is_recurring !== undefined && 
-            typeof task.is_recurring === 'object' &&
-            'frequency' in task.is_recurring;
-    };
-
-    // Update the shouldRecurTomorrow function with proper type checking
-    const shouldRecurTomorrow = (task: Task): boolean => {
-      if (!isValidRecurringTask(task)) return false;
-      
-      try {
-        switch (task.is_recurring.frequency) {
-          case 'daily':
-            return true;
-
-          case 'weekly':
-            if (!task.is_recurring.dayOfWeek) return false;
-            return memoizedFormat(tomorrow, 'EEEE') === task.is_recurring.dayOfWeek;
-
-          case 'monthly':
-            if (!task.is_recurring.dayOfWeek || !task.is_recurring.weekOfMonth) return false;
-            const tomorrowDayOfWeek = memoizedFormat(tomorrow, 'EEEE');
-            const tomorrowWeekOfMonth = memoizedGetWeekOfMonth(tomorrow);
-            return tomorrowDayOfWeek === task.is_recurring.dayOfWeek && 
-                  tomorrowWeekOfMonth === task.is_recurring.weekOfMonth;
-
-          default:
+        // Step 3: Process recurring tasks with memoization
+        const memoizedGetWeekOfMonth = memoize(getWeekOfMonth);
+        const memoizedFormat = memoize((date: Date, format: string) => dateFormat(date, format));
+    
+        // Add shouldRecurTomorrow function that uses the memoized functions
+        const shouldRecurTomorrow = (task: Task): boolean => {
+          if (!isValidRecurringTask(task)) return false;
+          
+          try {
+            switch (task.is_recurring.frequency) {
+              case 'daily':
+                return true;
+    
+              case 'weekly':
+                if (!task.is_recurring.dayOfWeek) return false;
+                return memoizedFormat(tomorrow, 'EEEE') === task.is_recurring.dayOfWeek;
+    
+              case 'monthly':
+                if (!task.is_recurring.dayOfWeek || !task.is_recurring.weekOfMonth) return false;
+                const tomorrowDayOfWeek = memoizedFormat(tomorrow, 'EEEE');
+                const tomorrowWeekOfMonth = memoizedGetWeekOfMonth(tomorrow);
+                return tomorrowDayOfWeek === task.is_recurring.dayOfWeek && 
+                       tomorrowWeekOfMonth === task.is_recurring.weekOfMonth;
+    
+              default:
+                return false;
+            }
+          } catch (error) {
+            console.error('Error checking recurrence:', error);
             return false;
-        }
-      } catch (error) {
-        console.error('Error checking recurrence:', error);
-        return false;
-      }
-    };
+          }
+        };
+    
+        // Process tasks in parallel with improved error handling
+        const [recurringTasksForTomorrow, existingRecurringForTomorrow] = await Promise.all([
+          // Process current schedule's recurring tasks
+          Promise.resolve(recurringTasks
+            .filter(shouldRecurTomorrow)
+            .map(task => ({
+              ...task,
+              id: uuidv4(),
+              completed: false,
+              start_date: tomorrowStr
+            }))),
+          // Process existing recurring tasks
+          Promise.resolve(existingRecurringTasks
+            .filter((task: Task) => 
+              shouldRecurTomorrow(task) && 
+              !recurringTasks.some(t => t.text === task.text)
+            )
+            .map((task: Task) => ({
+              ...task,
+              id: uuidv4(),
+              completed: false,
+              start_date: tomorrowStr
+            })))
+        ]);
 
-    // Process tasks in parallel using Promise.all for better performance
-    const [recurringTasksForTomorrow, newRecurringTasks, existingRecurringTasks] = await Promise.all([
-      // Process current schedule's recurring tasks
-      Promise.resolve(recurringTasks
-        .filter(shouldRecurTomorrow)
-        .map(task => ({
-          ...task,
-          id: uuidv4(),
-          completed: false,
-          start_date: tomorrowStr
-        }))),
-
-      // Process newly identified recurring tasks
-      Promise.resolve(recurringTasksData.recurring_tasks
-        .filter((task: Task) => !recurringTasks.some(t => t.text === task.text))
-        .map((task: Task) => ({
-          ...task,
-          id: uuidv4(),
-          is_recurring: { frequency: 'daily' },
-          completed: false,
-          start_date: tomorrowStr
-        }))),
-
-      // Process existing recurring tasks
-      Promise.resolve(existingRecurringTasksData.recurring_tasks
-        .filter((task: Task) => 
-          shouldRecurTomorrow(task) && 
-          !recurringTasks.some(t => t.text === task.text)
-        )
-        .map((task: Task) => ({
-          ...task,
-          id: uuidv4(),
-          completed: false,
-          start_date: tomorrowStr
-        })))
-    ]);
-
-    // Step 4: Combine all tasks efficiently using Set for deduplication
+    // Step 4: Combine all tasks with proper ordering and deduplication
     const taskSet = new Set<string>();
-    const combinedTasks = [...nonRecurringTasks, ...recurringTasksForTomorrow, 
-      ...newRecurringTasks, ...existingRecurringTasks]
-      .filter(task => {
-        // Skip deduplication for section tasks
-        if (task.is_section) return true;
-        // Only deduplicate non-section tasks
-        if (taskSet.has(task.text)) return false;
-        taskSet.add(task.text);
-        return true;
-      });
+    const combinedTasks = [
+      ...calendarTasks, // Calendar tasks come first
+      ...nonRecurringTasks,
+      ...recurringTasksForTomorrow,
+      ...existingRecurringForTomorrow
+    ].filter(task => {
+      if (task.is_section) return true;
+      // Deduplicate based on text and time
+      const taskKey = task.gcal_event_id ? 
+        `${task.text}-${task.start_time}-${task.end_time}` : 
+        task.text;
+      if (taskSet.has(taskKey)) return false;
+      taskSet.add(taskKey);
+      return true;
+    });
 
-    // Step 5: Format schedule based on layout preference
-    const layoutPreference: LayoutPreference = {
-      structure: userData.layout_preference.structure as 'structured' | 'unstructured',
-      subcategory: userData.layout_preference.subcategory,
-      timeboxed: userData.layout_preference.timeboxed as 'timeboxed' | 'untimeboxed'
-    };
-
-    // Get sections from current schedule, ensuring uniqueness
+    // Step 5: Get existing sections and prepare layout preference
     const currentSections = Array.from(new Set(
       currentSchedule
         .filter(task => task.is_section)
         .map(section => section.text)
     ));
 
+    const layoutPreference: LayoutPreference = {
+      structure: userData.layout_preference.structure as 'structured' | 'unstructured',
+      subcategory: userData.layout_preference.subcategory,
+      timeboxed: userData.layout_preference.timeboxed as 'timeboxed' | 'untimeboxed'
+    };
+
+    // Step 6: Format schedule based on user preferences
     let formattedSchedule = layoutPreference.structure === 'structured'
       ? formatStructuredSchedule(
-          // Filter out any section tasks from combinedTasks before formatting
           combinedTasks.filter(task => !task.is_section),
           currentSections,
           layoutPreference
         )
       : formatUnstructuredSchedule(combinedTasks, layoutPreference);
-
-    // Step 6: Assign time slots if timeboxed
+    // Step 7: Assign time slots if needed
     if (layoutPreference.timeboxed === 'timeboxed') {
       formattedSchedule = assignTimeSlots(
-        formattedSchedule, 
-        userData.work_start_time, 
+        formattedSchedule.map(task => {
+          // Preserve times for calendar events and tasks with existing times
+          if (task.gcal_event_id || (task.start_time && task.end_time)) {
+            return task;
+          }
+          return {
+            ...task,
+            start_time: undefined,
+            end_time: undefined
+          };
+        }),
+        userData.work_start_time,
         userData.work_end_time
       );
+    } else {
+      // For untimeboxed preference, clear times from non-calendar tasks
+      formattedSchedule = formattedSchedule.map(task => {
+        if (task.gcal_event_id) return task;
+        return {
+          ...task,
+          start_time: undefined,
+          end_time: undefined
+        };
+      });
     }
 
-    // Step 7: Save to database with conflict resolution
+    // Step 8: Save to database with enhanced error handling
     let warning: string | undefined;
     try {
       const scheduleDocument: ScheduleDocument = {
-        date: `${tomorrowStr}T00:00:00`, // Match MongoDB format
+        date: `${tomorrowStr}T00:00:00`,
         tasks: formattedSchedule,
-        userId: userData.name, // Add userId from form data
-        inputs: {  // Add inputs from current form data
+        userId: userData.user?.googleId || userData.name, // Prefer googleId if available
+        inputs: {
           name: userData.name,
           age: userData.age,
           work_start_time: userData.work_start_time,
@@ -546,15 +554,19 @@ export const generateNextDaySchedule = async (
             timeboxed: userData.layout_preference.timeboxed as 'timeboxed' | 'untimeboxed'
           },
           priorities: userData.priorities,
-          tasks: userData.tasks.map(task => task.text) 
+          tasks: userData.tasks.map(task => task.text)
         },
-        schedule: formattedSchedule, // Add schedule field
+        schedule: formattedSchedule,
         metadata: {
           createdAt: new Date().toISOString(),
-          lastModified: new Date().toISOString()
+          lastModified: new Date().toISOString(),
+          calendarSynced: Boolean(calendarTasks.length),
+          totalTasks: formattedSchedule.filter(task => !task.is_section).length,
+          calendarEvents: calendarTasks.length
         }
       };
 
+      // Attempt to save the schedule
       const saveResponse = await fetch(`${API_BASE_URL}/schedules`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -563,13 +575,14 @@ export const generateNextDaySchedule = async (
 
       if (!saveResponse.ok) {
         if (saveResponse.status === 409) {
-          // Handle conflict by updating existing schedule
+          // Handle conflict - schedule already exists
           const updateResult = await updateScheduleForDate(tomorrowStr, formattedSchedule);
           if (!updateResult.success) {
             warning = 'Schedule generated but failed to update existing schedule';
           }
         } else {
-          warning = 'Schedule generated but failed to save to database';
+          const errorText = await saveResponse.text();
+          warning = `Schedule generated but failed to save to database: ${errorText}`;
         }
       }
     } catch (error) {
@@ -577,39 +590,36 @@ export const generateNextDaySchedule = async (
       warning = 'Schedule generated but failed to save to database';
     }
 
+    // Step 9: Return the final result
     return {
       success: true,
       schedule: formattedSchedule,
-      warning
+      warning,
+      metadata: {
+        totalTasks: formattedSchedule.filter(task => !task.is_section).length,
+        calendarEvents: calendarTasks.length,
+        recurringTasks: recurringTasksForTomorrow.length + existingRecurringForTomorrow.length,
+        generatedAt: new Date().toISOString()
+      }
     };
 
   } catch (error) {
     console.error("Error generating next day schedule:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Failed to generate schedule"
+      error: error instanceof Error ? error.message : "Failed to generate schedule",
+      metadata: {
+        error: error instanceof Error ? error.stack : undefined,
+        generatedAt: new Date().toISOString()
+      }
     };
   }
 };
 
-// Update the memoize function type to be more flexible with parameter types
-function memoize<TArgs extends any[], TReturn>(
-  fn: (...args: TArgs) => TReturn
-): (...args: TArgs) => TReturn {
-  const cache = new Map<string, TReturn>();
-  return (...args: TArgs): TReturn => {
-    const key = JSON.stringify(args);
-    if (cache.has(key)) return cache.get(key)!;
-    const result = fn(...args);
-    cache.set(key, result);
-    return result;
-  };
-}
-
-const getSectionsFromCurrentSchedule = (currentSchedule: Task[]): string[] => {
-  return currentSchedule
-    .filter(task => task.is_section)
-    .map(section => section.text);
+// Helper function to parse time strings
+const parseTimeString = (timeStr: string): number => {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
 };
 
 const formatStructuredSchedule = (
@@ -617,80 +627,239 @@ const formatStructuredSchedule = (
   sections: string[],
   layoutPreference: LayoutPreference
 ): Task[] => {
-  const formattedSchedule: Task[] = [];
-
-  sections.forEach(section => {
-    formattedSchedule.push({
-      id: `section-${section.toLowerCase().replace(/\s+/g, '-')}`,
-      text: section,
-      is_section: true,
-      type: 'section',
-      completed: false,
-      categories: [],
-      is_subtask: false,
-      section: section,
-      parent_id: null,
-      level: 0,
-      section_index: formattedSchedule.length,
-      is_recurring: { frequency: 'daily' },
-    });
-
-    const sectionTasks = tasks.filter(task => task.section === section);
-    formattedSchedule.push(...sectionTasks);
+  // First, sort calendar events by start time to handle overlapping events
+  const sortedTasks = [...tasks].sort((a, b) => {
+    // Calendar events come first, sorted by start time
+    const aIsCalendar = Boolean(a.gcal_event_id);
+    const bIsCalendar = Boolean(b.gcal_event_id);
+    
+    if (aIsCalendar && bIsCalendar) {
+      // If both are calendar events, sort by start time
+      if (!a.start_time || !b.start_time) return 0;
+      return parseTimeString(a.start_time) - parseTimeString(b.start_time);
+    }
+    // Calendar events come before non-calendar tasks
+    if (aIsCalendar) return -1;
+    if (bIsCalendar) return 1;
+    return 0;
   });
 
-  // Add tasks without a section at the end
-  const tasksWithoutSection = tasks.filter(task => !task.section);
-  if (tasksWithoutSection.length > 0) {
-    const lastSection = sections[sections.length - 1] || 'Other Tasks';
-    if (!formattedSchedule.some(task => task.text === lastSection)) {
-      formattedSchedule.push({
-        id: `section-${lastSection.toLowerCase().replace(/\s+/g, '-')}`,
-        text: lastSection,
-        is_section: true,
-        type: 'section',
-        completed: false,
-        categories: [],
-        is_subtask: false,
-        section: lastSection,
-        parent_id: null,
-        level: 0,
-        section_index: formattedSchedule.length,
-        is_recurring: { frequency: 'daily' },
-   
+  // Group tasks by their categories
+  const tasksBySection = sortedTasks.reduce<Record<string, Task[]>>((acc, task) => {
+    // Determine the appropriate section
+    let section: string;
+    if (task.gcal_event_id) {
+      // Use the first matching section from categories, or 'Calendar' as fallback
+      section = task.categories?.find(cat => sections.includes(cat)) || 'Calendar';
+    } else {
+      // For non-calendar tasks, use first category or 'Uncategorized'
+      section = task.categories?.[0] || 'Uncategorized';
+    }
+
+    if (!acc[section]) {
+      acc[section] = [];
+    }
+    acc[section].push(task);
+    return acc;
+  }, {});
+
+  // Create the formatted schedule with sections
+  const formattedSchedule: Task[] = [];
+  
+  // Ensure 'Calendar' section comes first if it exists and has tasks
+  const orderedSections = ['Calendar', ...sections.filter(s => s !== 'Calendar')]
+    .filter(section => tasksBySection[section]?.length > 0);
+
+  orderedSections.forEach((section, index) => {
+    // Add section header
+    formattedSchedule.push({
+      id: uuidv4(),
+      text: section,
+      is_section: true,
+      completed: false,
+      section: null,
+      is_subtask: false,
+      parent_id: null,
+      level: 0,
+      section_index: index,
+      type: 'section',
+      categories: [],
+      start_date: undefined
+    });
+
+    // Add tasks for this section
+    const sectionTasks = tasksBySection[section] || [];
+    
+    // For calendar events in the same section, ensure they're properly ordered
+    if (section === 'Calendar' || sectionTasks.some(task => task.gcal_event_id)) {
+      sectionTasks.sort((a, b) => {
+        if (!a.start_time || !b.start_time) return 0;
+        return parseTimeString(a.start_time) - parseTimeString(b.start_time);
       });
     }
-    formattedSchedule.push(...tasksWithoutSection.map(task => ({ ...task, section: lastSection })));
-  }
+
+    sectionTasks.forEach(task => {
+      formattedSchedule.push({
+        ...task,
+        section: section,
+        section_index: index
+      });
+    });
+  });
 
   return formattedSchedule;
 };
 
-const formatUnstructuredSchedule = (tasks: Task[], layoutPreference: LayoutPreference): Task[] => {
-  return tasks;
+const formatUnstructuredSchedule = (
+  tasks: Task[],
+  layoutPreference: LayoutPreference
+): Task[] => {
+  // Sort tasks: calendar events first (sorted by time), then other tasks
+  return tasks
+    .sort((a, b) => {
+      const aIsCalendar = Boolean(a.gcal_event_id);
+      const bIsCalendar = Boolean(b.gcal_event_id);
+      
+      if (aIsCalendar && bIsCalendar) {
+        // Both are calendar events, sort by start time
+        if (!a.start_time || !b.start_time) return 0;
+        return parseTimeString(a.start_time) - parseTimeString(b.start_time);
+      }
+      // Calendar events come first
+      if (aIsCalendar) return -1;
+      if (bIsCalendar) return 1;
+      return 0;
+    })
+    .map(task => ({
+      ...task,
+      section: null,
+      section_index: 0
+    }));
 };
 
-const assignTimeSlots = (schedule: Task[], workStartTime: string, workEndTime: string): Task[] => {
-  const workStart = new Date(`1970-01-01T${workStartTime}`);
-  const workEnd = new Date(`1970-01-01T${workEndTime}`);
-  const totalMinutes = (workEnd.getTime() - workStart.getTime()) / 60000;
-  const minutesPerTask = Math.floor(totalMinutes / schedule.filter(task => !task.is_section).length);
+const assignTimeSlots = (
+  schedule: Task[], 
+  workStartTime: string, 
+  workEndTime: string
+): Task[] => {
+  // Return early if no tasks need time slots
+  if (schedule.length === 0) return schedule;
 
-  let currentTime = new Date(workStart);
+  // Separate calendar events and other tasks
+  const calendarTasks = schedule.filter(task => 
+    !task.is_section && task.gcal_event_id && task.start_time && task.end_time
+  );
+  const regularTasks = schedule.filter(task => 
+    !task.is_section && !task.gcal_event_id && !task.start_time
+  );
+  const tasksWithExistingTimes = schedule.filter(task => 
+    !task.is_section && !task.gcal_event_id && task.start_time && task.end_time
+  );
+  const sectionTasks = schedule.filter(task => task.is_section);
 
-  return schedule.map(task => {
-    if (task.is_section) return task;
+  // Create array of available time slots
+  const workStart = parseTimeString(workStartTime);
+  const workEnd = parseTimeString(workEndTime);
+  
+  // Initialize available time slots
+  let availableSlots: TimeSlot[] = [{
+    start: workStartTime,
+    end: workEndTime,
+    isOccupied: false
+  }];
 
-    const startTime = currentTime.toTimeString().slice(0, 5);
-    currentTime.setMinutes(currentTime.getMinutes() + minutesPerTask);
-    const endTime = currentTime.toTimeString().slice(0, 5);
+  // Mark slots as occupied for calendar events and existing timed tasks
+  [...calendarTasks, ...tasksWithExistingTimes].forEach(task => {
+    if (!task.start_time || !task.end_time) return;
+    
+    const taskStart = parseTimeString(task.start_time);
+    const taskEnd = parseTimeString(task.end_time);
+    
+    // Split or remove affected time slots
+    availableSlots = availableSlots.reduce<TimeSlot[]>((acc, slot) => {
+      const slotStart = parseTimeString(slot.start);
+      const slotEnd = parseTimeString(slot.end);
+      
+      if (slot.isOccupied || slotEnd <= taskStart || slotStart >= taskEnd) {
+        // Slot is already occupied or doesn't overlap with task
+        acc.push(slot);
+      } else {
+        // Create slots before and after the task if there's space
+        if (slotStart < taskStart) {
+          acc.push({
+            start: slot.start,
+            end: formatTimeString(taskStart),
+            isOccupied: false
+          });
+        }
+        if (slotEnd > taskEnd) {
+          acc.push({
+            start: formatTimeString(taskEnd),
+            end: slot.end,
+            isOccupied: false
+          });
+        }
+      }
+      return acc;
+    }, []);
+  });
+
+  // Calculate time per remaining task
+  const totalAvailableMinutes = availableSlots.reduce((total, slot) => {
+    const slotStart = parseTimeString(slot.start);
+    const slotEnd = parseTimeString(slot.end);
+    return total + (slotEnd - slotStart);
+  }, 0);
+  
+  const minutesPerTask = Math.floor(totalAvailableMinutes / regularTasks.length);
+
+  // Assign time slots to regular tasks
+  let currentSlotIndex = 0;
+  let currentMinutesInSlot = 0;
+  
+  const assignedRegularTasks = regularTasks.map(task => {
+    // Find next available slot
+    while (
+      currentSlotIndex < availableSlots.length && 
+      currentMinutesInSlot >= parseTimeString(availableSlots[currentSlotIndex].end) - 
+      parseTimeString(availableSlots[currentSlotIndex].start)
+    ) {
+      currentSlotIndex++;
+      currentMinutesInSlot = 0;
+    }
+
+    if (currentSlotIndex >= availableSlots.length) {
+      // No more slots available, return task without times
+      return task;
+    }
+
+    const currentSlot = availableSlots[currentSlotIndex];
+    const slotStart = parseTimeString(currentSlot.start);
+    const taskStart = slotStart + currentMinutesInSlot;
+    const taskEnd = Math.min(taskStart + minutesPerTask, parseTimeString(currentSlot.end));
+    
+    currentMinutesInSlot += minutesPerTask;
 
     return {
       ...task,
-      start_time: startTime,
-      end_time: endTime
+      start_time: formatTimeString(taskStart),
+      end_time: formatTimeString(taskEnd)
     };
   });
+
+  // Combine all tasks back together in the correct order
+  return schedule.map(task => {
+    if (task.is_section) return task;
+    if (task.gcal_event_id || (task.start_time && task.end_time)) return task;
+    return assignedRegularTasks.find(t => t.id === task.id) || task;
+  });
+};
+
+// Helper function to format time string from minutes
+const formatTimeString = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
 };
 
 export const cleanupTasks = async (parsedTasks: Task[], existingTasks: Task[]): Promise<Task[]> => {
@@ -1103,5 +1272,154 @@ export const checkScheduleExists = async (date: Date): Promise<boolean> => {
   } catch (error) {
     console.error('Error checking schedule:', error);
     return false;
+  }
+};
+
+// Helper function to convert Google Calendar event to Task
+const convertGCalEventToTask = async (
+  event: GoogleCalendarEvent,
+  categoryCache: Record<string, string[]>,
+  targetDate: string  // Add target date parameter
+): Promise<Task | null> => {
+  try {
+    // Extract event details
+    const eventName = event.summary;
+    const eventStart = new Date(event.start.dateTime);
+    const eventEnd = new Date(event.end.dateTime);
+    const targetDateObj = new Date(targetDate);
+    
+    // Adjust times for events spanning days
+    let startTime: string | undefined;
+    let endTime: string | undefined;
+
+    // If event starts before target date, set start time to midnight
+    if (eventStart.toISOString().split('T')[0] < targetDate) {
+      startTime = '00:00';
+    } else {
+      startTime = eventStart.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: false 
+      });
+    }
+
+    // If event ends after target date, only include if it started on or before target date
+    if (eventEnd.toISOString().split('T')[0] > targetDate) {
+      if (eventStart.toISOString().split('T')[0] > targetDate) {
+        return null; // Skip this event as it's for a future date
+      }
+      endTime = '23:59';
+    } else {
+      endTime = eventEnd.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: false 
+      });
+    }
+
+    // Determine recurrence (unchanged)
+    let recurrence: RecurrenceType | null = null;
+    if (event.recurrence) {
+      const rrule = event.recurrence[0];
+      recurrence = parseRRuleToRecurrenceType(rrule);
+    }
+
+    // Get categories (unchanged)
+    let categories: string[];
+    const cacheKey = eventName.toLowerCase();
+    if (categoryCache[cacheKey]) {
+      categories = categoryCache[cacheKey];
+    } else {
+      try {
+        const result = await categorizeTask(eventName);
+        categories = result?.categories || ['Uncategorized'];
+        categoryCache[cacheKey] = categories;
+      } catch (error) {
+        console.error('Error categorizing calendar event:', error);
+        categories = ['Uncategorized'];
+      }
+    }
+
+    return {
+      id: uuidv4(),
+      text: eventName,
+      categories,
+      is_subtask: false,
+      completed: false,
+      is_section: false,
+      section: null, // Will be assigned later based on categories
+      parent_id: null,
+      level: 0,
+      section_index: 0, // Will be updated when formatting schedule
+      type: 'task',
+      start_time: startTime,
+      end_time: endTime,
+      is_recurring: recurrence,
+      start_date: targetDate,
+      gcal_event_id: event.id
+    };
+  } catch (error) {
+    console.error('Error converting calendar event to task:', error);
+    return null;
+  }
+};
+
+// Helper function to parse Google Calendar RRULE to our RecurrenceType
+const parseRRuleToRecurrenceType = (rrule: string): RecurrenceType | null => {
+  // Define day mapping with proper WeekDay type
+  const dayMap: Record<string, WeekDay> = {
+    MO: 'Monday',
+    TU: 'Tuesday',
+    WE: 'Wednesday',
+    TH: 'Thursday',
+    FR: 'Friday',
+    SA: 'Saturday',
+    SU: 'Sunday'
+  } as const;
+
+  // Define week mapping with proper MonthWeek type
+  const weekMap: Record<number, MonthWeek> = {
+    1: 'first',
+    2: 'second',
+    3: 'third',
+    4: 'fourth',
+    [-1]: 'last'
+  } as const;
+
+  try {
+    if (rrule.includes('FREQ=DAILY')) {
+      return { frequency: 'daily' };
+    } 
+    
+    if (rrule.includes('FREQ=WEEKLY')) {
+      const dayMatch = rrule.match(/BYDAY=([A-Z]{2})/);
+      if (dayMatch && dayMatch[1] && dayMatch[1] in dayMap) {
+        return {
+          frequency: 'weekly',
+          dayOfWeek: dayMap[dayMatch[1]]
+        };
+      }
+    } 
+    
+    if (rrule.includes('FREQ=MONTHLY')) {
+      const monthlyMatch = rrule.match(/BYDAY=(\d{1}|-\d{1})([A-Z]{2})/);
+      if (monthlyMatch && monthlyMatch[1] && monthlyMatch[2]) {
+        const weekNumber = parseInt(monthlyMatch[1]);
+        const dayCode = monthlyMatch[2];
+
+        if (weekNumber in weekMap && dayCode in dayMap) {
+          return {
+            frequency: 'monthly',
+            dayOfWeek: dayMap[dayCode],
+            weekOfMonth: weekMap[weekNumber]
+          };
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error parsing RRULE:', error);
+    return null;
   }
 };

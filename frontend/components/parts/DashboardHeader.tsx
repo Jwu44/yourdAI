@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatDateToString, checkScheduleExists } from '@/lib/helper';
+import { useAuth } from '@/lib/AuthContext';
 
 // Custom Components
 import { TypographyH3 } from '@/app/fonts/text';
@@ -74,6 +75,18 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     // State to track button disabled states
   const [isPrevDisabled, setIsPrevDisabled] = useState(true);
   const [isNextDisabled, setIsNextDisabled] = useState(false);
+
+  const { signOut } = useAuth();
+
+  // Add handler for logout
+  const handleLogout = async (event: Event) => {
+    event.preventDefault();
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Failed to log out:', error);
+    }
+  };
 
   // Memoize the date formatting to prevent unnecessary recalculations
   const formattedDate = useCallback(() => {
@@ -269,7 +282,10 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               <span>Settings</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-gray-700" />
-            <DropdownMenuItem className="focus:bg-gray-700">
+            <DropdownMenuItem 
+              className="focus:bg-gray-700"
+              onSelect={handleLogout}
+            >
               <LogOut className="mr-2 h-4 w-4" />
               <span>Log out</span>
             </DropdownMenuItem>

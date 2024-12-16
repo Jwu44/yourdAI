@@ -33,6 +33,7 @@
     "cmdk": "^1.0.0",
     "dayjs": "^1.11.10",
     "evergreen-ui": "^7.1.9",
+    "firebase-admin": "^13.0.1",
     "framer-motion": "^11.5.6",
     "lucide-react": "^0.441.0",
     "next": "14.2.11",
@@ -47,6 +48,7 @@
     "vaul": "^0.9.6"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.13",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-beautiful-dnd": "^13.1.8",

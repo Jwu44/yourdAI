@@ -1,15 +1,193 @@
 from flask import Blueprint, jsonify, request
-from backend.services.colab_integration import process_user_data, categorize_task, identify_recurring_tasks, decompose_task, generate_schedule_suggestions
-from backend.db_config import get_user_schedules_collection, store_microstep_feedback, get_ai_suggestions_collection
+from backend.services.colab_integration import process_user_data, categorize_task, decompose_task, generate_schedule_suggestions
+from backend.db_config import get_database, get_user_schedules_collection, store_microstep_feedback, get_ai_suggestions_collection, create_or_update_user
 import traceback
 from bson import ObjectId
 from datetime import datetime, UTC  
-from pymongo import DESCENDING
 from backend.models.task import Task
-from typing import List, Dict
+from typing import List, Dict, Any
 import json
 
 api_bp = Blueprint("api", __name__)
+
+@api_bp.route("/auth/user", methods=["POST"])
+def create_or_get_user():
+    """
+    Create or update user after Google authentication.
+    Expects a JSON payload with user data from Google Auth.
+    Returns the user object or error response.
+    """
+    try:
+        print("Received authentication request. Headers:", request.headers)
+        print("Request body:", request.get_json(silent=True))
+        # Validate request payload
+        user_data = request.json
+        if not user_data:
+            return jsonify({"error": "Missing request body"}), 400
+
+        # Validate required fields
+        required_fields = ["googleId", "email"]
+        missing_fields = [field for field in required_fields if field not in user_data]
+        if missing_fields:
+            return jsonify({
+                "error": f"Missing required fields: {', '.join(missing_fields)}"
+            }), 400
+
+        # Get database instance and users collection
+        db = get_database()
+        users = db['users']
+
+        # Prepare calendar settings based on hasCalendarAccess
+        has_calendar_access = user_data.get('hasCalendarAccess', False)
+        calendar_settings = {
+            "connected": has_calendar_access,
+            "lastSyncTime": None,
+            "syncStatus": "never",
+            "selectedCalendars": [],
+            "error": None,
+            "settings": {
+                "autoSync": True,
+                "syncFrequency": 15,  # minutes
+                "defaultReminders": True
+            }
+        }
+
+        # Ensure displayName is never None/null
+        display_name = user_data.get("displayName")
+        if not display_name:
+            # Fall back to email username if displayName is not provided
+            display_name = user_data["email"].split('@')[0]
+
+        # Prepare user data with all required fields and ensure no null values
+        processed_user_data = {
+            "googleId": user_data["googleId"],
+            "email": user_data["email"],
+            "displayName": display_name,  # Use processed display_name
+            "photoURL": user_data.get("photoURL") or "",  # Ensure photoURL is never null
+            "role": "free",  # Default role for new users
+            "calendarSynced": has_calendar_access,
+            "lastLogin": datetime.now(UTC), 
+            "calendar": calendar_settings,
+            "metadata": {
+                "lastModified": datetime.now(UTC)  # Use UTC here as well
+            }
+        }
+
+        # Create or update user using the utility function
+        user = create_or_update_user(users, processed_user_data)
+        
+        if not user:
+            return jsonify({
+                "error": "Failed to create or update user"
+            }), 500
+
+        # Convert ObjectId to string and dates to ISO format for JSON serialization
+        serialized_user = process_user_for_response(user)
+
+        return jsonify({
+            "user": serialized_user,
+            "message": "User successfully created/updated"
+        }), 200
+
+    except Exception as e:
+        # Log the full error traceback for debugging
+        traceback.print_exc()
+        return jsonify({
+            "error": "Internal server error",
+            "message": str(e)
+        }), 500
+
+def process_user_for_response(user: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process user document for JSON response.
+    Converts ObjectId to string and datetime objects to ISO format.
+    """
+    processed_user = dict(user)  # Create a copy to avoid modifying the original
+    
+    # Convert ObjectId to string
+    if '_id' in processed_user:
+        processed_user['_id'] = str(processed_user['_id'])
+    
+    # Convert datetime objects to ISO format strings
+    date_fields = ['lastLogin', 'createdAt', 'lastModified']
+    for field in date_fields:
+        if field in processed_user:
+            if isinstance(processed_user[field], datetime):
+                processed_user[field] = processed_user[field].isoformat()
+    
+    # Process nested datetime objects in metadata
+    if 'metadata' in processed_user and 'lastModified' in processed_user['metadata']:
+        if isinstance(processed_user['metadata']['lastModified'], datetime):
+            processed_user['metadata']['lastModified'] = processed_user['metadata']['lastModified'].isoformat()
+    
+    # Process calendar lastSyncTime if it exists
+    if 'calendar' in processed_user and 'lastSyncTime' in processed_user['calendar']:
+        if isinstance(processed_user['calendar']['lastSyncTime'], datetime):
+            processed_user['calendar']['lastSyncTime'] = processed_user['calendar']['lastSyncTime'].isoformat()
+    
+    return processed_user
+
+@api_bp.route("/user/<user_id>", methods=["GET"])
+def get_user(user_id):
+    try:
+        # Get database instance
+        db = get_database()
+        
+        # Get user collection
+        users = db['users']
+        
+        # Find user by Google ID
+        user = users.find_one({"googleId": user_id})
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+            
+        # Convert ObjectId to string for JSON serialization
+        user['_id'] = str(user['_id'])
+        
+        return jsonify({"user": user}), 200
+        
+    except Exception as e:
+        print(f"Error getting user: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/user/<user_id>", methods=["PUT"])
+def update_user(user_id):
+    try:
+        updates = request.json
+        if not updates:
+            return jsonify({"error": "No updates provided"}), 400
+            
+        # Get database instance
+        db = get_database()
+        
+        # Get user collection
+        users = db['users']
+        
+        # Update user document
+        result = users.update_one(
+            {"googleId": user_id},
+            {"$set": {
+                **updates,
+                "lastModified": datetime.now().isoformat()
+            }}
+        )
+        
+        if result.modified_count == 0:
+            return jsonify({"error": "User not found"}), 404
+            
+        # Get updated user document
+        updated_user = users.find_one({"googleId": user_id})
+        updated_user['_id'] = str(updated_user['_id'])
+        
+        return jsonify({
+            "message": "User updated successfully",
+            "user": updated_user
+        }), 200
+        
+    except Exception as e:
+        print(f"Error updating user: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @api_bp.route("/submit_data", methods=["POST"])
 def submit_data():
@@ -80,27 +258,6 @@ def add_task():
         categorized_task = categorize_task(task_data['task'])
         
         return jsonify(categorized_task)
-
-    except Exception as e:
-        print("Exception occurred:", str(e))
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-
-@api_bp.route("/identify_recurring_tasks", methods=["POST"])
-def recurring_tasks():
-    try:
-        data = request.json
-        if not data or 'current_schedule' not in data or 'previous_schedules' not in data:
-            return jsonify({"error": "Invalid data provided"}), 400
-        
-        current_schedule = data['current_schedule']
-        previous_schedules = data['previous_schedules']
-        
-        print("Identifying recurring tasks")
-        recurring_tasks = identify_recurring_tasks(current_schedule, previous_schedules)
-        print("Recurring tasks identified:", recurring_tasks)
-
-        return jsonify({"recurring_tasks": recurring_tasks})
 
     except Exception as e:
         print("Exception occurred:", str(e))
@@ -363,6 +520,27 @@ def get_schedules_range():
 
         return jsonify({"schedules": schedules}), 200
 
+    except Exception as e:
+        print("Exception occurred:", str(e))
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+    
+@api_bp.route("/user/<user_id>/has-schedules", methods=["GET"])
+def check_user_schedules(user_id):
+    """Check if a user has any schedules."""
+    try:
+        user_schedules = get_user_schedules_collection()
+        
+        # Check for at least one schedule
+        schedule_exists = user_schedules.find_one(
+            {"userId": user_id},
+            {"_id": 1}  # Only retrieve ID for performance
+        ) is not None
+        
+        return jsonify({
+            "hasSchedules": schedule_exists
+        }), 200
+        
     except Exception as e:
         print("Exception occurred:", str(e))
         traceback.print_exc()

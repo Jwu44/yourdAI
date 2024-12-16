@@ -10,7 +10,7 @@ from cachetools import TTLCache, LRUCache
 # Disable InsecureRequestWarning
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-COLAB_BASE_URL = "https://a791-34-55-3-168.ngrok-free.app" 
+COLAB_BASE_URL = "https://e10f-34-73-14-200.ngrok-free.app" 
 
 # Add cache for decomposition results (TTL of 24 hours, max 1000 entries)
 decomposition_cache = TTLCache(maxsize=1000, ttl=86400)
@@ -62,27 +62,6 @@ def categorize_task(task_text):
             return task.to_dict()
         else:
             raise Exception(f"Task categorization failed: {response.text}")
-    
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
-        raise
-
-def identify_recurring_tasks(current_schedule, previous_schedules):
-    url = f"{COLAB_BASE_URL}/identify_recurring_tasks"
-    
-    data = {
-        "current_schedule": current_schedule,
-        "previous_schedules": previous_schedules
-    }
-    
-    try:
-        response = requests.post(url, json=data, verify=False)
-        
-        if response.status_code == 200:
-            result = response.json()
-            return result.get('recurring_tasks', [])
-        else:
-            raise Exception(f"Recurring tasks identification failed: {response.text}")
     
     except requests.exceptions.RequestException as e:
         print(f"Request failed: {e}")

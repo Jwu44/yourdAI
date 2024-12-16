@@ -1,28 +1,28 @@
 export interface Task {
-    id: string;
-    text: string;
-    categories?: string[];
-    completed: boolean;
-    is_subtask?: boolean;
-    is_section?: boolean;
-    section?: string | null;
-    parent_id?: string | null;
-    level?: number;
-    section_index?: number;
-    type?: string;
-    start_time?: string | null;
-    end_time?: string | null;
-    is_recurring?: RecurrenceType | null;
-    start_date?: string;
-    is_microstep?: boolean;
-    rationale?: string;
-    estimated_time?: string;
-    energy_level_required?: 'low' | 'medium' | 'high';
+  id: string;
+  text: string;
+  categories?: string[];
+  completed: boolean;
+  is_subtask?: boolean;
+  is_section?: boolean;
+  section?: string | null;
+  parent_id?: string | null;
+  level?: number;
+  section_index?: number;
+  type?: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  is_recurring?: RecurrenceType | null;
+  start_date?: string;
+  is_microstep?: boolean;
+  rationale?: string;
+  estimated_time?: string;
+  energy_level_required?: 'low' | 'medium' | 'high';
+  gcal_event_id?: string; 
 }
 
 export interface FormData {
-  name: string;
-  age: string;
+  user?: UserDocument; 
   work_start_time: string;
   work_end_time: string;
   tasks: Task[];
@@ -172,3 +172,156 @@ export interface GetAISuggestionsResponse {
     count: number;
   };
 }
+
+export interface CalendarCredentials {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt: number;
+  scopes: string[];
+}
+
+// Add new user-related interfaces
+export interface UserDocument {
+  googleId: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  role: UserRole;
+  calendarSynced: boolean;
+  lastLogin: string;
+  createdAt: string;
+  metadata?: {
+    lastModified: string;
+  };
+  calendar?: {
+    connected: boolean;
+    credentials?: CalendarCredentials;
+    lastSyncTime: string | null;
+    syncStatus: 'never' | 'in_progress' | 'completed' | 'failed';
+    selectedCalendars: string[];
+    error: string | null;
+    settings?: {
+      autoSync: boolean;
+      syncFrequency: number;
+      defaultReminders: boolean;
+    };
+  };
+}
+
+export interface CalendarEvent {
+  id: string;
+  calendarId: string;
+  summary: string;
+  description?: string;
+  start: { dateTime: string; timeZone: string; };
+  end: { dateTime: string; timeZone: string; };
+  recurringEventId?: string;
+  status: 'confirmed' | 'tentative' | 'cancelled';
+  created: string;
+  updated: string;
+  creator: { email: string; displayName?: string; };
+  organizer: { email: string; displayName?: string; };
+}
+
+export type UserRole = 'free' | 'premium' | 'admin';
+
+export interface AuthResponse {
+  message: string;
+  user: UserDocument;
+  isNewUser?: boolean;
+}
+
+// Backend API response types
+export interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+export interface AuthState {
+  user: UserDocument | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export interface AuthContextType extends AuthState {
+  signIn: () => Promise<void>;
+  signOut: () => Promise<void>;
+  clearError: () => void;
+}
+
+// Python backend response types
+export interface PythonBackendResponse<T> {
+  message?: string;
+  error?: string;
+  data?: T;
+  status: 'success' | 'error';
+}
+
+// Session types
+export interface SessionData {
+  token: string;
+  userId: string;
+  expiresAt: number;
+}
+
+export interface ScheduleDocument {
+  date: string;
+  tasks: Task[];
+  userId: string;
+  inputs: {
+    name: string;
+    age: string;
+    work_start_time: string;
+    work_end_time: string;
+    energy_patterns: string[];
+    layout_preference: {
+      structure: 'structured' | 'unstructured';
+      subcategory: string;
+      timeboxed: 'timeboxed' | 'untimeboxed';
+    };
+    priorities: Record<string, string>;
+    tasks: string[];
+  };
+  schedule: Task[];
+  metadata: {
+    createdAt: string;
+    lastModified: string;
+    calendarSynced: boolean;
+    totalTasks: number;
+    calendarEvents: number;
+  };
+}
+
+export interface ScheduleResponse {
+  _id: string;
+  date: string;
+  tasks: Task[];
+  metadata: {
+    createdAt: string;
+    lastModified: string;
+  };
+}
+
+export interface TimeSlot {
+  start: string;
+  end: string;
+  isOccupied: boolean;
+}
+
+export interface ScheduleMetadata {
+  totalTasks?: number;
+  calendarEvents?: number;
+  recurringTasks?: number;
+  generatedAt: string;
+  error?: string;
+}
+
+export interface GoogleCalendarEvent {
+  id: string;
+  summary: string;
+  start: { dateTime: string; date?: string };
+  end: { dateTime: string; date?: string };
+  recurrence?: string[]; 
+}
+
