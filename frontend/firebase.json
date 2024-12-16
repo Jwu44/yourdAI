@@ -1,10 +1,22 @@
 {
   "hosting": {
+    "port": 5002,
     "public": "public",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Content-Security-Policy",
+            "value": "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com http://localhost:9099"
+          }
+        ]
+      }
     ],
     "rewrites": [
       {
@@ -18,7 +30,7 @@
       "port": 9099
     },
     "hosting": {
-      "port": 5001
+      "port": 5003
     },
     "ui": {
       "enabled": true

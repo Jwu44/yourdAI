@@ -50,44 +50,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Single source of truth for authentication flow
   useEffect(() => {
-    const handleRedirectAuth = async () => {
-      try {
-        if (processed.current) return;
-        processed.current = true;
+    // In the handleRedirectAuth function
+const handleRedirectAuth = async () => {
+  try {
+    if (processed.current) return;
+    processed.current = true;
 
-        console.log("Checking for redirect authentication...");
-        console.log("Current URL:", window.location.href);
-        const redirectResult = await handleRedirectResult();
-        console.log("Redirect result:", redirectResult); // Add this
-        
-        if (redirectResult) {
-          console.log("Processing redirect result");
-          // Store calendar tokens if available
-          if (redirectResult.credentials) {
-            await tokenService.storeCalendarTokens(
-              redirectResult.user.uid,
-              redirectResult.credentials
-            );
-          }
-          
-          // Create/update user in database
-          await syncUserWithDatabase(
-            redirectResult.user,
-            redirectResult.hasCalendarAccess
-          );
-          
-          // Navigate to work-times page
-          router.push('/work-times');
-        }
-      } catch (error) {
-        console.error('Redirect handling error:', error);
-        setAuthState(prev => ({
-          ...prev,
-          loading: false,
-          error: error instanceof Error ? error.message : 'Authentication error'
-        }));
+    console.log("Checking for redirect authentication...");
+    const redirectResult = await handleRedirectResult();
+    console.log("Redirect result:", redirectResult);
+    
+    if (redirectResult) {
+      console.log("Processing redirect result");
+      
+      // Store the auth token in sessionStorage
+      const token = await redirectResult.user.getIdToken(false);
+      sessionStorage.setItem('authToken', token);
+      
+      // Store calendar tokens if available
+      if (redirectResult.credentials) {
+        await tokenService.storeCalendarTokens(
+          redirectResult.user.uid,
+          redirectResult.credentials
+        );
       }
-    };
+      
+      // Create/update user in database
+      await syncUserWithDatabase(
+        redirectResult.user,
+        redirectResult.hasCalendarAccess
+      );
+      
+      // Set auth state before navigation
+      setAuthState({
+        user: {
+          googleId: redirectResult.user.uid,
+          email: redirectResult.user.email || '',
+          displayName: redirectResult.user.displayName || redirectResult.user.email?.split('@')[0] || '',
+          photoURL: redirectResult.user.photoURL || '',
+          role: 'free',
+          calendarSynced: false,
+          lastLogin: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          metadata: {
+            lastModified: new Date().toISOString()
+          },
+          calendar: {
+            connected: false,
+            lastSyncTime: null,
+            syncStatus: 'never',
+            selectedCalendars: [],
+            error: null
+          }
+        },
+        loading: false,
+        error: null
+      });
+      
+      // Navigate to work-times page
+      router.push('/work-times');
+    } else {
+      console.log("No redirect result - normal page load");
+      setAuthState(prev => ({ ...prev, loading: false }));
+    }
+  } catch (error) {
+    console.error('Redirect handling error:', error);
+    setAuthState(prev => ({
+      ...prev,
+      loading: false,
+      error: error instanceof Error ? error.message : 'Authentication error'
+    }));
+  }
+};
 
     // Check for redirect result on mount
     handleRedirectAuth();
@@ -249,7 +283,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Clear ALL storage
       sessionStorage.clear();
       localStorage.clear(); // Add this to clear Firebase auth persistence
-      
+
       // Call Firebase sign out
       await signOut();
       

@@ -5,6 +5,8 @@ import {
   signInWithRedirect,
   getRedirectResult,
   connectAuthEmulator,
+  setPersistence,
+  browserLocalPersistence,
   signOut as firebaseSignOut 
 } from 'firebase/auth';
 
@@ -20,16 +22,31 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+// Add console logs to debug initialization
+console.log('Firebase config:', {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+});
 
-// Connect to emulator if in development
-if (process.env.NODE_ENV === 'development') {
-  connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
-  console.log('Connected to Auth Emulator');
-}
-;
+// Initialize Firebase only once
+const apps = getApps();
+const app = !apps.length ? initializeApp(firebaseConfig) : apps[0];
+// After initializing auth
+const auth = getAuth(app);
+setPersistence(auth, browserLocalPersistence)
+  .then(() => {
+    console.log('Persistence set to LOCAL');
+  })
+  .catch((error) => {
+    console.error('Error setting persistence:', error);
+  });
+
+// // Connect to emulator if in development
+// if (process.env.NODE_ENV === 'development') {
+//   connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true });
+//   console.log('Connected to Auth Emulator');
+// }
 // Configure Google Auth Provider with Calendar scopes
 const googleProvider = new GoogleAuthProvider();
 
@@ -67,26 +84,18 @@ googleProvider.setCustomParameters({
 // Enhanced sign in function with better error handling and logging
 export const signInWithGoogle = async () => {
   try {
+    console.log("Starting sign-in process...");
+    
     // Clear any existing auth states and tokens
     sessionStorage.clear();
-    await firebaseSignOut(auth).catch(() => {}); // Silent cleanup
+    await firebaseSignOut(auth).catch(() => {});
 
-    // Validate required environment variables
-    if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
-      throw new Error('Firebase configuration is missing');
-    }
-
-    console.log("Auth domain check:", {
-      configuredDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-      currentUrl: window.location.href,
-      authDomain: auth.config.authDomain
-    });
-
+    // Log the current window location
+    console.log("Current location:", window.location.href);
+    
     // Initiate the redirect sign-in
     await signInWithRedirect(auth, googleProvider);
-    console.log({auth});
-    console.log({googleProvider});
-    console.log("i'm gey")
+    
     return true;
   } catch (error: any) {
     console.error('Google sign-in error:', {

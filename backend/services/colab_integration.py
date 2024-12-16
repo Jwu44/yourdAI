@@ -10,7 +10,7 @@ from cachetools import TTLCache, LRUCache
 # Disable InsecureRequestWarning
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-COLAB_BASE_URL = "https://e10f-34-73-14-200.ngrok-free.app" 
+COLAB_BASE_URL = "https://16f4-34-133-134-100.ngrok-free.app" 
 
 # Add cache for decomposition results (TTL of 24 hours, max 1000 entries)
 decomposition_cache = TTLCache(maxsize=1000, ttl=86400)
