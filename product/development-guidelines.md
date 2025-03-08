@@ -1,7 +1,7 @@
 # General Development Rules
 - Use task-based development approach
 - Before implementing code:
-    - If requirements for a task in backlog.md are unclear or you feel like you don't have full context, keep asking necessary clarifying questions until confident.
+    - If requirements for a task in task.md are unclear or you feel like you don't have full context, keep asking necessary clarifying questions until confident.
 <!-- - For each task: write tests, implement code, run tests -->
 - When implementing code:
     - Document complex logic with inline comments
@@ -15,7 +15,7 @@
         - Best practices for [language/framework]
         - Generate the code with clear comments explaining the logic.
 <!-- - When tests pass:
-  - Update backlog.md (mark task as complete)
+  - Update task.md (mark task as complete)
   - Update memory.md with current state
   - Fix any warnings/errors
   - Stop and open a new chat for next task -->
@@ -40,7 +40,7 @@
 # Memory Management
 - Keep memory.md up-to-date with project state based on completed tasks in task.md
 - Include technical decisions and context needed between sessions
-- Do not annotate task completion in memory.md. It will be tracked in backlog.md
+- Do not annotate task completion in memory.md. It will be tracked in task.md
 
 # Update development guidelines
 - If necessary, update this file development-guidelines.md to reflect anything you've learned while working on the project.
