@@ -31,7 +31,7 @@ export const submitFormData = async (formData: FormData) => {
   console.log("Form Data Before Submission:", formData);
 
   try {
-    const response = await fetch(`${API_BASE_URL}/submit_data`, {
+    const response = await fetch(`${API_BASE_URL}/api/submit_data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(formData)
@@ -48,24 +48,46 @@ export const submitFormData = async (formData: FormData) => {
   }
 };
 
-export const extractSchedule = (response: ScheduleResponse | string): string => {
+export const extractSchedule = (
+  response: ScheduleResponse | string, 
+  preserveTags: boolean = false
+): string => {
+  // Handle response being an object with schedule property
+  if (response && typeof response === 'object' && 'schedule' in response) {
+    const scheduleStr = response.schedule;
+    if (typeof scheduleStr === 'string') {
+      const scheduleRegex = /<schedule>([\s\S]*?)<\/schedule>/;
+      const match = scheduleStr.match(scheduleRegex);
+      if (match) {
+        return preserveTags ? scheduleStr : match[1].trim();
+      }
+    }
+    return String(scheduleStr); // Fallback
+  }
+  
+  // Handle response with tasks array
   if (response && typeof response === 'object' && 'tasks' in response) {
     // Convert tasks array to schedule string format
-    return response.tasks
+    const content = response.tasks
       .map(task => {
         const indent = '  '.repeat(task.level || 0);
         return `${indent}${task.is_section ? task.text : `- ${task.text}`}`;
       })
       .join('\n');
+    
+    return preserveTags ? `<schedule>${content}</schedule>` : content;
   }
   
+  // Handle direct string response
   if (typeof response === 'string') {
     const scheduleRegex = /<schedule>([\s\S]*?)<\/schedule>/;
     const match = response.match(scheduleRegex);
-    if (match) return match[1].trim();
+    if (match) {
+      return preserveTags ? response : match[1].trim();
+    }
   }
   
-  console.warn("No valid schedule found in the response.");
+  console.warn("No valid schedule found in the response:", response);
   return '';
 };
 
@@ -114,11 +136,15 @@ export const parseScheduleToTasks = async (
     return [];
   }
 
-  // Extract schedule content from tags
+  // Extract schedule content from tags if they exist
   const scheduleRegex = /<schedule>([\s\S]*?)<\/schedule>/;
   const match = scheduleText.match(scheduleRegex);
-  if (!match) {
-    console.error('No <schedule> tags found in the text');
+  
+  // Use either the matched content or the original text if no tags found
+  const scheduleContent = match ? match[1].trim() : scheduleText.trim();
+  
+  if (!scheduleContent) {
+    console.error('Empty schedule content');
     return [];
   }
 
@@ -132,11 +158,10 @@ export const parseScheduleToTasks = async (
     }
   });
 
-  const scheduleContent = match[1].trim();
   const lines = scheduleContent.split('\n');
   const taskStack: Task[] = [];
   const tasks: Task[] = [];
-  let currentSection = '';;
+  let currentSection = '';
   let sectionStartIndex = 0;
   
   // Use Set for efficient duplicate checking
@@ -248,7 +273,7 @@ const createSectionTask = (text: string, section: string ): Task => ({
 const syncParsedScheduleWithBackend = async (scheduleId: string, parsedTasks: Task[]): Promise<void> => {
   try {
     // Send parsed tasks to backend for syncing
-    const response = await fetch(`${API_BASE_URL}/update_parsed_schedule`, {
+    const response = await fetch(`${API_BASE_URL}/api/update_parsed_schedule`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -340,7 +365,7 @@ export const generateNextDaySchedule = async (
 
     if (userData.user?.calendar?.connected) {
       try {
-        const calendarResponse = await fetch(`${API_BASE_URL}/calendar/sync/next-day`, {
+        const calendarResponse = await fetch(`${API_BASE_URL}/api/calendar/sync/next-day`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -396,7 +421,7 @@ export const generateNextDaySchedule = async (
     let existingRecurringTasks: Task[] = [];
     try {
       const existingRecurringTasksResponse = await fetchWithTimeout(
-        `${API_BASE_URL}/get_recurring_tasks`,
+        `${API_BASE_URL}/api/get_recurring_tasks`,
         {
           method: 'GET',
           headers: { 'Content-Type': 'application/json' }
@@ -571,7 +596,7 @@ export const generateNextDaySchedule = async (
       };
 
       // Attempt to save the schedule
-      const saveResponse = await fetch(`${API_BASE_URL}/schedules`, {
+      const saveResponse = await fetch(`${API_BASE_URL}/api/schedules`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(scheduleDocument)
@@ -949,7 +974,7 @@ export const loadScheduleForDate = async (date: string): Promise<{
   error?: string 
 }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/schedules/${date}`, {
+    const response = await fetch(`${API_BASE_URL}/api/schedules/${date}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
@@ -989,7 +1014,7 @@ export const updateScheduleForDate = async (
   tasks: Task[]
 ): Promise<{ success: boolean; error?: string }> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/schedules/${date}`, {
+    const response = await fetch(`${API_BASE_URL}/api/schedules/${date}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tasks })
@@ -1020,7 +1045,7 @@ export const loadSchedulesRange = async (
 }> => {
   try {
     const response = await fetch(
-      `${API_BASE_URL}/schedules/range?start_date=${startDate}&end_date=${endDate}`,
+      `${API_BASE_URL}/api/schedules/range?start_date=${startDate}&end_date=${endDate}`,
       {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
@@ -1066,7 +1091,7 @@ export const handleMicrostepDecomposition = async (
       work_end_time: formData.work_end_time
     };
 
-    const response = await fetch(`${API_BASE_URL}/tasks/decompose`, {
+    const response = await fetch(`${API_BASE_URL}/api/tasks/decompose`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1104,7 +1129,7 @@ export const submitMicrostepFeedback = async (
       timestamp: new Date().toISOString()
     };
 
-    const response = await fetch(`${API_BASE_URL}/tasks/microstep-feedback`, {
+    const response = await fetch(`${API_BASE_URL}/api/tasks/microstep-feedback`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1209,7 +1234,7 @@ export const fetchAISuggestions = async (
   energyPatterns: string[]
 ): Promise<GetAISuggestionsResponse> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/schedule/suggestions`, {
+    const response = await fetch(`${API_BASE_URL}/api/schedule/suggestions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -1254,7 +1279,7 @@ export const checkScheduleExists = async (date: Date): Promise<boolean> => {
     
     // Use the range endpoint with a single day range for efficiency
     const response = await fetch(
-      `${API_BASE_URL}/schedules/range?start_date=${dateStr}&end_date=${dateStr}`
+      `${API_BASE_URL}/api/schedules/range?start_date=${dateStr}&end_date=${dateStr}`
     );
 
     if (!response.ok) {

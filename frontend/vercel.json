@@ -1,9 +1,12 @@
 {
-    "version": 2,
-    "routes": [
-      {
-        "src": "/(.*)",
-        "dest": "/"
-      }
-    ]
-  }
+  "version": 2,
+  "routes": [
+    { "handle": "filesystem" },
+    { "src": "/static/(.*)", "dest": "/static/$1" },
+    { "src": "/images/(.*)", "dest": "/images/$1" },
+    { "src": "/assets/(.*)", "dest": "/assets/$1" },
+    { "src": "/_next/(.*)", "dest": "/_next/$1" },
+    { "src": "/favicon.ico", "dest": "/favicon.ico" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}

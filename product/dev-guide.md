@@ -1,7 +1,6 @@
 # General Development Rules
 - Use task-based development approach
-- Before implementing code:
-    - If requirements for a task in task.md are unclear or you feel like you don't have full context, keep asking necessary clarifying questions until confident.
+- Before implementation, you are to understand the context of the task in task.md. If requirements for a task in task.md are unclear or you feel like you don't have full context, keep asking necessary clarifying questions until confident.
 <!-- - For each task: write tests, implement code, run tests -->
 - When implementing code:
     - Document complex logic with inline comments

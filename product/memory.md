@@ -45,6 +45,8 @@ To optimize query performance, we maintain the following indexes:
 - ObjectId fields are converted to strings for JSON serialization
 - Datetime objects are converted to ISO format strings
 - Nested objects are flattened where appropriate to reduce document size
+- Custom Python objects (like Task instances) are serialized to dictionaries before MongoDB storage using the `serialize_tasks()` utility function
+- Serialization is applied to entire document structures to ensure all nested objects are properly converted
 
 ### Large Object Handling
 
@@ -59,45 +61,10 @@ For large objects such as user profile images:
 - Flask application is configured with appropriate worker processes based on instance size
 - MongoDB connection pooling is implemented to efficiently reuse connections
 - Memory-intensive operations (like AI processing) are executed asynchronously
+- Custom Python objects are properly serialized before database storage to prevent InvalidDocument errors
 
 ### Frontend Memory Considerations
 
 - React component memoization is used to prevent unnecessary re-renders
 - Large lists implement virtualization to render only visible items
 - Images are lazy-loaded and properly sized to reduce memory usage
-
-## Backup and Recovery
-
-### Backup Strategy
-
-- MongoDB databases are backed up daily using AWS Backup
-- Critical user data is replicated across multiple availability zones
-- Database snapshots are retained for 30 days
-
-### Recovery Procedures
-
-In case of data loss:
-1. Identify the scope of affected data
-2. Restore from the most recent backup
-3. Apply transaction logs to recover data since the last backup
-4. Verify data integrity before resuming normal operations
-
-## Monitoring and Alerts
-
-- Memory usage is monitored via CloudWatch metrics
-- Alerts are configured for:
-  - High memory utilization (>85%)
-  - Database storage approaching capacity (>80%)
-  - Abnormal increases in storage consumption
-
-## Future Improvements
-
-- Implement Redis for more efficient caching
-- Explore time-series data optimization for historical schedules
-- Consider sharding strategy as user base grows beyond current projections
-
-## Related Documentation
-
-- [Database Schema](./database-schema.md)
-- [API Documentation](./api-docs.md)
-- [AWS Infrastructure](./aws-infrastructure.md)

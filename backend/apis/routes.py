@@ -10,13 +10,14 @@ import firebase_admin
 from firebase_admin import auth as firebase_auth
 from firebase_admin import credentials
 import os
+import re
 # Import AI service functions directly
 from backend.services.ai_service import (
     generate_schedule,
-    categorize_task as ai_categorize_task,
-    decompose_task as ai_decompose_task,
+    categorize_task,
+    decompose_task,
     update_decomposition_patterns,
-    generate_schedule_suggestions as ai_generate_schedule_suggestions
+    generate_schedule_suggestions
 )
 import uuid
 
@@ -33,20 +34,31 @@ def add_cors_headers(response):
     allowed_origins = os.getenv("CORS_ALLOWED_ORIGINS", 
                              "https://yourdai.app,https://yourdai.be,https://www.yourdai.app,http://localhost:3000").split(",")
     
-    # If origin is in the allowed list, add CORS headers (only if not already present)
+    # If origin is in the allowed list, add CORS headers
     if origin in allowed_origins:
-        # Only add headers if they don't already exist
-        if 'Access-Control-Allow-Origin' not in response.headers:
-            response.headers.add('Access-Control-Allow-Origin', origin)
-        if 'Access-Control-Allow-Headers' not in response.headers:
-            response.headers.add('Access-Control-Allow-Headers', 
-                               'Content-Type, Authorization, X-Requested-With, Accept, Origin')
-        if 'Access-Control-Allow-Methods' not in response.headers:
-            response.headers.add('Access-Control-Allow-Methods', 
-                               'GET, POST, PUT, DELETE, OPTIONS')
-        if 'Access-Control-Allow-Credentials' not in response.headers:
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add('Access-Control-Allow-Headers', 
+                           'Content-Type, Authorization, X-Requested-With, Accept, Origin')
+        response.headers.add('Access-Control-Allow-Methods', 
+                           'GET, POST, PUT, DELETE, OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
     
+    return response
+
+# Add a global OPTIONS request handler for all routes
+@api_bp.route('/<path:path>', methods=['OPTIONS'])
+@api_bp.route('/', methods=['OPTIONS'])
+def handle_options_requests(path=None):
+    """
+    Handle OPTIONS preflight requests for all API routes.
+    
+    Args:
+        path: Optional path parameter for route matching
+        
+    Returns:
+        JSON response with 200 OK status for preflight requests
+    """
+    response = jsonify({"status": "ok"})
     return response
 
 if not firebase_admin._apps:
@@ -120,16 +132,12 @@ def create_or_get_user():
     POST: Create/update user with Google Auth data
     GET: Return user info if Authorization header is provided, otherwise return API info
     OPTIONS: Handle preflight requests for CORS
-    """
+    """ 
     # Handle OPTIONS request (preflight) for CORS
     if request.method == "OPTIONS":
         response = jsonify({"status": "ok"})
-        response.headers.add("Access-Control-Allow-Origin", request.headers.get("Origin", "*"))
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin")
-        response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        response.headers.add("Access-Control-Max-Age", "3600")
+        # Don't add CORS headers here - they'll be added by the global handler
         return response
-        
     try:
         # Handle GET requests (for browser direct access or health checks)
         if request.method == "GET":
@@ -354,50 +362,58 @@ def submit_data():
         user_id = user_data['name']
         
         print(f"User data received for user {user_id}:", user_data)
-
-        # Convert Task objects to dictionaries if needed
-        if 'tasks' in user_data:
-            user_data['tasks'] = [task if isinstance(task, Task) else Task.from_dict(task) 
-                                 for task in user_data['tasks']]
         
         # Call AI service directly
-        result = generate_schedule(user_data)
-
-        print("Response from AI service:", result)
-
-        if result and 'schedule' in result:
+        ai_result = generate_schedule(user_data)
+        print("Response from AI service:", ai_result)
+        
+        if not ai_result.get("success", False):
+            return jsonify(ai_result), 400
+        
+        # Store the schedule in the database
+        try:
             user_schedules = get_user_schedules_collection()
-
-            # Prepare the schedule document with more detailed information
+            
+            # Extract schedule content from tags for storage
+            schedule_content = ai_result.get("schedule", "")
+            schedule_match = re.search(r'<schedule>([\s\S]*?)</schedule>', schedule_content)
+            schedule_text = schedule_match.group(1).strip() if schedule_match else schedule_content
+            
+            # Create schedule document
             schedule_document = {
                 "userId": user_id,
                 "date": datetime.now().isoformat(),
-                "inputs": {
-                    "name": user_data.get('name'),
-                    "age": user_data.get('age'),
-                    "work_start_time": user_data.get('work_start_time'),
-                    "work_end_time": user_data.get('work_end_time'),
-                    "energy_patterns": user_data.get('energy_patterns', []),
-                    "layout_preference": user_data.get('layout_preference', {}),
-                    "priorities": user_data.get('priorities', {}),
-                    "tasks": user_data.get('tasks', [])
-                },
-                "schedule": result['schedule'],
+                "inputs": user_data,
+                "schedule": schedule_text,
                 "metadata": {
-                    "generated_at": datetime.now().isoformat(),
+                    "created_at": datetime.now().isoformat(),
                     "source": "ai_service"
                 }
             }
             
-            # Insert the schedule document
-            user_schedules.insert_one(schedule_document)
-
-        return jsonify(result)
+            # Serialize any Task objects and insert into database
+            schedule_document = serialize_tasks(schedule_document)
+            db_result = user_schedules.insert_one(schedule_document)
+            
+            # Create response with schedule and new document ID
+            response_data = {
+                "success": True,
+                "schedule": schedule_content,  # Keep original schedule with tags
+                "scheduleId": str(db_result.inserted_id)
+            }
+            
+            print("Schedule saved to database successfully")
+            return jsonify(response_data)
+            
+        except Exception as db_error:
+            print(f"Error saving schedule to database: {str(db_error)}")
+            # Still return the AI result if DB save fails
+            return jsonify(ai_result)
         
     except Exception as e:
         print(f"Error in submit_data: {str(e)}")
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "success": False}), 500
 
 @api_bp.route("/categorize_task", methods=["POST"])
 def api_categorize_task():
@@ -409,7 +425,7 @@ def api_categorize_task():
         task_text = data['task']
         
         # Call AI service directly
-        categories = ai_categorize_task(task_text)
+        categories = categorize_task(task_text)
         
         # Create a Task object
         task = Task(id=str(uuid.uuid4()), text=task_text, categories=categories)
@@ -422,8 +438,11 @@ def api_categorize_task():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@api_bp.route("/update_parsed_schedule", methods=["POST"])
+@api_bp.route("/update_parsed_schedule", methods=["POST", "OPTIONS"])
 def update_parsed_schedule():
+    # Handle OPTIONS request for CORS preflight
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
     try:
         data = request.json
         if not data or 'scheduleId' not in data or 'parsedTasks' not in data:
@@ -645,9 +664,12 @@ def update_schedule(date):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@api_bp.route("/schedules/range", methods=["GET"])
+@api_bp.route("/schedules/range", methods=["GET", "OPTIONS"])
 def get_schedules_range():
     """Retrieve schedules within a date range."""
+    # Handle OPTIONS request for CORS preflight
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
     try:
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
@@ -723,7 +745,7 @@ def api_decompose_task():
         }
         
         # Call AI service directly
-        result = ai_decompose_task(task_data, user_data)
+        result = decompose_task(task_data, user_data)
         
         # Handle different response formats safely
         if result:
@@ -882,7 +904,7 @@ def api_generate_suggestions():
         print(data)
         try:
             # Call AI service directly
-            suggestions = ai_generate_schedule_suggestions(
+            suggestions = generate_schedule_suggestions(
                 user_id=data['userId'],
                 current_schedule=data['currentSchedule'],
                 historical_schedules=data['historicalSchedules'],
@@ -955,3 +977,27 @@ def store_suggestions_in_db(user_id: str, date: str, suggestions: List[Dict]) ->
         print(f"Error storing suggestions: {e}")
         # Return original suggestions if storage fails
         return suggestions
+
+def serialize_tasks(data):
+    """
+    Recursively convert Task objects to dictionaries throughout a data structure.
+    Works with lists, dictionaries, and individual items.
+    
+    Args:
+        data: Any data structure that might contain Task objects
+        
+    Returns:
+        The data structure with all Task objects converted to dictionaries
+    """
+    if isinstance(data, Task):
+        # If it's a Task object, convert to dictionary
+        return data.to_dict()
+    elif isinstance(data, list):
+        # If it's a list, process each item
+        return [serialize_tasks(item) for item in data]
+    elif isinstance(data, dict):
+        # If it's a dictionary, process each value
+        return {key: serialize_tasks(value) for key, value in data.items()}
+    else:
+        # Return other types unchanged (int, str, bool, etc.)
+        return data

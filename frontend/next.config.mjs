@@ -1,6 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
+  // Disable image optimization since we're using static export
+  images: {
+    unoptimized: true
+  },
   // Keep your existing rewrites if needed for development
   async rewrites() {
     if (process.env.NODE_ENV === 'development') {
