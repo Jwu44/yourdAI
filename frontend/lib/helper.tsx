@@ -1,4 +1,4 @@
-import { categorizeTask } from './api';
+import { categorizeTask } from './api/users';
 import { v4 as uuidv4 } from 'uuid';
 import { Task, ScheduleDocument, ScheduleResponse, ScheduleMetadata, TimeSlot, GoogleCalendarEvent, FormAction, LayoutPreference, WeekDay, MonthWeek, RecurrenceType, DecompositionRequest, DecompositionResponse, MicrostepFeedback, FeedbackResponse, FormData, GetAISuggestionsResponse  } from './types';
 import { format as dateFormat } from 'date-fns';

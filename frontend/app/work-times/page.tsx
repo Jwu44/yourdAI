@@ -175,7 +175,7 @@ const WorkTimes = () => {
   }, [router, state]);
 
   const handlePrevious = useCallback(() => {
-    router.push('/personal-details');
+    router.push('/');
   }, [router]);
 
   return (

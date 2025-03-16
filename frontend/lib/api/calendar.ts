@@ -1,4 +1,4 @@
-import { UserDocument } from './types';
+import { UserDocument } from '../types';
 
 // Use the calendar part of UserDocument type
 type CalendarStatus = NonNullable<UserDocument['calendar']>;

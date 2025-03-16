@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import ProgressBar from './ProgressBar';
 import { useForm } from '@/lib/FormContext';
 import { OnboardingHeader } from './OnboardingHeader';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 // Define as const to ensure type safety
 export const ONBOARDING_ROUTES = {
@@ -25,7 +25,7 @@ export const OnboardingLayout: React.FC<{ children: React.ReactNode }> = ({ chil
   const pathname = usePathname();
   const router = useRouter();
   const { state, dispatch } = useForm();
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useIsMobile();
 
   // Memoize calculations to prevent unnecessary re-renders
   const totalSteps = useMemo(() => {

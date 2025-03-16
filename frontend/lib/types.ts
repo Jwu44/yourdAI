@@ -347,3 +347,7 @@ export interface FirebaseUser {
   photoURL: string | null;
   getIdToken: (forceRefresh: boolean) => Promise<string>;
 }
+
+export interface WithHandleGetStarted {
+  handleGetStarted: () => Promise<void>;
+}

@@ -726,7 +726,7 @@ def check_user_schedules(user_id):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@api_bp.route("/decompose_task", methods=["POST"])
+@api_bp.route("/tasks/decompose", methods=["POST"])
 def api_decompose_task():
     try:
         data = request.json

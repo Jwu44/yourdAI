@@ -1,25 +1,76 @@
-import Link from 'next/link';
+'use client';
+import { useEffect } from "react";
+import { useAuth } from '@/auth/AuthContext';
+import Header from "@/components/parts/home/Header";
+import Hero from "@/components/parts/home/Hero";
+import DemoSection from "@/components/parts/home/DemoSection";
+import CTA from "@/components/parts/home/CTA";
+import Footer from "@/components/parts/home/Footer";
 
-export default function Home() {
+const HomePage = () => {
+  const { signIn } = useAuth();
+
+  // Handle sign in and redirect to work-times page
+  const handleGetStarted = async () => {
+    try {
+      await signIn('/work-times');
+    } catch (error) {
+      console.error('Sign in error:', error);
+    }
+  };
+
+  // Add smooth scroll effect for navigation
+  useEffect(() => {
+    // Set dark mode by default
+    document.documentElement.classList.add('dark');
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        const targetId = (e.target as HTMLAnchorElement).getAttribute('href')?.substring(1);
+        if (!targetId) return;
+        
+        const targetElement = document.getElementById(targetId);
+        if (!targetElement) return;
+        
+        window.scrollTo({
+          top: targetElement.offsetTop - 80, // Offset for header
+          behavior: 'smooth'
+        });
+      });
+    });
+    
+    // Animation on scroll
+    const handleScroll = () => {
+      const elements = document.querySelectorAll('.animate-on-scroll');
+      
+      elements.forEach(element => {
+        const elementTop = element.getBoundingClientRect().top;
+        const windowHeight = window.innerHeight;
+        
+        if (elementTop < windowHeight * 0.85) {
+          element.classList.add('animate-fade-in');
+        }
+      });
+    };
+    
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Initialize on load
+    
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+  
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <h1>Welcome to Your App</h1>
-        <nav>
-          <ul>
-            <li><Link href="/home">Home</Link></li>
-            <li><Link href="/personal-details">Personal Details</Link></li>
-            <li><Link href="/work-times">Work Times</Link></li>
-            <li><Link href="/tasks">Tasks</Link></li>
-            <li><Link href="/energy-patterns">Energy Patterns</Link></li>
-            <li><Link href="/priorities">Priorities</Link></li>
-            <li><Link href="/structure-preference">Structure Preference</Link></li>
-            <li><Link href="/subcategory-preference">Subcategory Preference</Link></li>
-            <li><Link href="/timebox-preference">Layout Preference</Link></li>
-            <li><Link href="/dashboard">Dashboard</Link></li>
-          </ul>
-        </nav>
+    <div className="min-h-screen bg-background text-foreground dark:bg-yourdai-dark dark:text-white">
+      <Header handleGetStarted={handleGetStarted} />
+      <main>
+        <Hero handleGetStarted={handleGetStarted} />
+        <DemoSection />
+        <CTA handleGetStarted={handleGetStarted} />
       </main>
+      <Footer />
     </div>
   );
-}
+};
+
+export default HomePage;

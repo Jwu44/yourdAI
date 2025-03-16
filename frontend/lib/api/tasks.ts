@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '../auth/firebaseAdmin';
+import { auth } from '../../auth/firebaseAdmin';
 import { cookies } from 'next/headers';
 
 // Your Python backend URL

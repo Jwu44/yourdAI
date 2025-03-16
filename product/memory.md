@@ -37,6 +37,8 @@ To optimize query performance, we maintain the following indexes:
 
 - MongoDB query results are cached in-memory for frequently accessed data
 - Firebase token verification results are cached to reduce authentication overhead
+- Task categorization results are cached using TTLCache to reduce AI API calls
+- Decomposition results use LRUCache for frequently accessed tasks
 
 ## Storage Optimization
 
@@ -68,3 +70,21 @@ For large objects such as user profile images:
 - React component memoization is used to prevent unnecessary re-renders
 - Large lists implement virtualization to render only visible items
 - Images are lazy-loaded and properly sized to reduce memory usage
+
+## CORS Configuration
+
+### Cross-Origin Resource Sharing
+
+- CORS is configured at multiple levels to ensure secure cross-origin communication:
+  - Global application-level CORS configuration in `application.py`
+  - Blueprint-level CORS handlers in `api_bp` using `after_request` decorator
+  - Explicit OPTIONS method handlers for preflight requests on critical endpoints
+- Allowed origins are configured via environment variables (CORS_ALLOWED_ORIGINS)
+- All API endpoints properly handle OPTIONS preflight requests to prevent CORS errors
+- Headers are configured to allow credentials, content-type, and other necessary headers
+
+### API Endpoint Structure
+
+- All backend API endpoints are registered under the `/api/` prefix
+- Frontend API calls must include this prefix when making requests
+- Error handling includes proper status codes and CORS headers for cross-origin errors
