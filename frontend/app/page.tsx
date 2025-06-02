@@ -10,10 +10,10 @@ import Footer from "@/components/parts/home/Footer";
 const HomePage = () => {
   const { signIn } = useAuth();
 
-  // Handle sign in and redirect to work-times page
+  // Handle sign in and redirect to priorities page
   const handleGetStarted = async () => {
     try {
-      await signIn('/work-times');
+      await signIn('/priorities');
     } catch (error) {
       console.error('Sign in error:', error);
     }

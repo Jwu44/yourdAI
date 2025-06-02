@@ -15,7 +15,9 @@ import { cn } from "@/lib/utils";
 import { useForm } from '../../lib/FormContext';
 import { useToast } from "@/hooks/use-toast";
 import TaskEditDrawer from './TaskEditDrawer';
-import { Task } from '../../lib/types';
+import { 
+  Task
+} from '../../lib/types';
 import { 
   handleMicrostepDecomposition
 } from '../../lib/helper';
@@ -296,7 +298,12 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
     return null;
   }, [dragState]);
 
-  // Handle microstep decomposition of a task
+  /**
+   * Handles task decomposition into microsteps
+   * 
+   * Uses the AI service to break down a task into smaller, more manageable steps
+   * and presents them to the user for selection.
+   */
   const handleDecompose = useCallback(async () => {
     // Guard clause - only proceed if decomposition is allowed and not already in progress
     if (!canDecompose || isDecomposing) return;
@@ -305,17 +312,31 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
       // Set loading state and clear any existing microsteps
       setIsDecomposing(true);
       setShowMicrosteps(false);
-
+      
       // Get microstep texts from backend
       const microstepTexts = await handleMicrostepDecomposition(task, formData);
       
       // Convert microstep texts into full Task objects
       // Updated to handle both string array and object array responses
-      const microstepTasks = microstepTexts.map((step: string | { text: string }) => {
-        const text = typeof step === 'string' ? step : step.text;
+      const microstepTasks = microstepTexts.map((step: string | { 
+        text: string; 
+        rationale?: string;
+        estimated_time?: string;
+        energy_level_required?: 'low' | 'medium' | 'high';
+      }) => {
+        // Handle both string and object formats
+        const isObject = typeof step !== 'string';
+        const text = isObject ? step.text : step;
+        const rationale = isObject ? step.rationale : undefined;
+        const estimatedTime = isObject ? step.estimated_time : undefined;
+        const energyLevel = isObject ? step.energy_level_required : undefined;
+        
         return {
           id: crypto.randomUUID(), // Generate unique ID for each microstep
-          text: text, // The microstep text from backend
+          text, // The microstep text
+          rationale, // Store explanation if available
+          estimated_time: estimatedTime, // Store time estimate if available
+          energy_level_required: energyLevel, // Store energy level if available
           is_microstep: true, // Mark as microstep
           completed: false,
           is_section: false,
@@ -323,7 +344,9 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
           parent_id: task.id, // Link to parent task
           level: (task.level || 0) + 1, // Indent one level from parent
           type: 'microstep',
-          categories: task.categories || [] // Inherit categories from parent
+          categories: task.categories || [], // Inherit categories from parent
+          // Add layout-related information for proper rendering
+          section_index: 0 // Will be recalculated when added to schedule
         };
       });
 
@@ -351,9 +374,16 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
     }
   }, [canDecompose, task, formData, toast, isDecomposing]);
 
-  // Update the handleMicrostepAccept function to properly create and add the subtask
+  /**
+   * Handles user acceptance of a suggested microstep
+   * 
+   * Converts a microstep suggestion into an actual task and adds it to the schedule
+   * Preserves layout information and parent-child relationships.
+   * 
+   * @param microstep - The microstep suggestion to convert to a task
+   */
   const handleMicrostepAccept = useCallback(async (microstep: Task) => {
-    try {
+    try {      
       // Create a new task object with all required properties for a subtask
       const newSubtask: Task = {
         ...microstep,
@@ -370,11 +400,13 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
         end_time: null,
         is_recurring: null,
         section_index: 0, // Will be recalculated by EditableSchedule
+        // Include additional properties from the microstep if available
+        rationale: microstep.rationale || task.rationale,
+        estimated_time: microstep.estimated_time || task.estimated_time,
+        energy_level_required: microstep.energy_level_required || task.energy_level_required
       };
 
       // Call the main onUpdateTask function which will handle the task creation
-      // This will trigger the handleUpdateTask logic in EditableSchedule
-      console.log('Adding new subtask:', newSubtask);
       onUpdateTask(newSubtask);
 
       // Remove the microstep from suggestions
@@ -422,7 +454,7 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
           onClick={handleDecompose}
           disabled={isDecomposing}
           className={cn(
-            "text-blue-500 hover:text-blue-400",
+            "text-primary hover:text-primary/80",
             isDecomposing && "opacity-50 cursor-not-allowed"
           )}
         >
@@ -464,7 +496,7 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
         onDrop={handleDrop}
         onDragEnd={handleDragEnd}
         className={cn(
-          "relative flex items-center p-2 my-1 bg-background rounded",
+          "relative flex items-center p-2 my-1 rounded",
           isSection ? "cursor-default flex-col items-start" : "cursor-move",
           isDecomposing && "animate-pulse",
           task.level && task.level > 0 ? "pl-8" : "",
@@ -499,7 +531,7 @@ const EditableScheduleRow: React.FC<EditableScheduleRowProps> = ({
             <div className="w-full h-px bg-white opacity-50" />
           </>
         ) : (
-          <span className={`flex-1 ${task.completed ? 'line-through text-muted-foreground' : ''}`}>
+          <span className={`flex-1 text-white ${task.completed ? 'line-through text-muted-foreground' : ''}`}>
             {task.start_time && task.end_time ? 
               `${task.start_time} - ${task.end_time}: ` : ''}
             {task.text}

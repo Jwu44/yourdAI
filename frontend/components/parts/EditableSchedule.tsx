@@ -3,18 +3,52 @@ import { Pane } from 'evergreen-ui';
 import { TypographyH4 } from '@/app/fonts/text';
 import EditableScheduleRow from './EditableScheduleRow';
 import AISuggestionsList from './AISuggestionsList';
-import { Task, AISuggestion } from '../../lib/types';
+import { 
+  Task, 
+  AISuggestion, 
+  ScheduleLayoutType, 
+  BaseLayoutType, 
+  LayoutStructure 
+} from '../../lib/types';
+import { applyScheduleLayout } from '../../lib/ScheduleHelper';
 
+/**
+ * Props interface for the EditableSchedule component
+ */
 interface EditableScheduleProps {
+  /** Tasks to display in the schedule */
   tasks: Task[];
+  
+  /** Callback function for updating a task */
   onUpdateTask: (task: Task) => void;
+  
+  /** Callback function for deleting a task */
   onDeleteTask: (taskId: string) => void;
+  
+  /** Callback function for reordering tasks */
   onReorderTasks: (tasks: Task[]) => void;
-  layoutPreference: string;
+  
+  /** 
+   * Layout preference for the schedule
+   * Can be:
+   * - ScheduleLayoutType string (e.g., 'todolist-structured')
+   * - Legacy string ('structured', 'unstructured', 'category')
+   */
+  layoutPreference: string | ScheduleLayoutType;
+  
+  /** Callback function to request AI suggestions */
   onRequestSuggestions: () => Promise<void>;
+  
+  /** Flag indicating if suggestions are being loaded */
   isLoadingSuggestions: boolean;
+  
+  /** Map of task IDs to associated AI suggestions */
   suggestionsMap: Map<string, AISuggestion[]>;
+  
+  /** Callback function for accepting a suggestion */
   onAcceptSuggestion: (suggestion: AISuggestion) => void;
+  
+  /** Callback function for rejecting a suggestion */
   onRejectSuggestion: (suggestionId: string) => void;
 }
 
@@ -28,57 +62,42 @@ const EditableSchedule: React.FC<EditableScheduleProps> = ({
   onAcceptSuggestion,
   onRejectSuggestion
 }) => {
-  const memoizedTasks = useMemo(() => {
-    if (layoutPreference === 'category') {
-      const groupedTasks = tasks.reduce((acc: { [key: string]: Task[] }, task) => {
-        const category = task.categories?.[0] || 'Uncategorized';
-        if (!acc[category]) {
-          acc[category] = [];
-        }
-        acc[category].push({...task}); // Create new reference
-        return acc;
-      }, {});
-
-      return Object.entries(groupedTasks)
-        .filter(([category]) => category !== 'Uncategorized')
-        .flatMap(([category, categoryTasks]) => [
-          {
-            id: `section-${category}`,
-            text: category.charAt(0).toUpperCase() + category.slice(1),
-            is_section: true,
-            type: 'section',
-            categories: [],
-            completed: false
-          } as Task,
-          ...categoryTasks.map(task => ({
-            ...task,
-            type: 'task',
-            section: category
-          }))
-        ]);
-    } else {
-      let currentSection: string | null = null;
-      let sectionStartIndex = 0;
-      return tasks.map((task, index) => {
-        if (task.is_section) {
-          currentSection = task.text;
-          sectionStartIndex = index;
-          return {
-            ...task,
-            type: 'section',
-            section: currentSection,
-            sectionIndex: 0
-          };
-        }
-        return {
-          ...task,
-          type: 'task',
-          section: currentSection,
-          sectionIndex: index - sectionStartIndex
-        };
-      });
+  /**
+   * Convert and validate layout preference to ensure it's a proper ScheduleLayoutType
+   * 
+   * Handles legacy string preferences and normalizes to the correct format
+   * while ensuring the result is a valid ScheduleLayoutType.
+   */
+  const normalizedLayoutType: ScheduleLayoutType = useMemo(() => {
+    // Handle legacy string preferences
+    if (layoutPreference === 'category' || layoutPreference === 'structured') {
+      return 'todolist-structured';
+    } else if (layoutPreference === 'unstructured') {
+      return 'todolist-unstructured';
     }
-  }, [tasks, layoutPreference]);
+    
+    // If it's already a ScheduleLayoutType string, validate it
+    const layoutString = String(layoutPreference);
+    if (layoutString.includes('-')) {
+      const [baseType, structure] = layoutString.split('-') as [BaseLayoutType, LayoutStructure];
+      
+      // Validate base type
+      const validBaseTypes: BaseLayoutType[] = ['todolist', 'kanban', 'calendar', 'timeline'];
+      const validStructures: LayoutStructure[] = ['structured', 'unstructured'];
+      
+      if (validBaseTypes.includes(baseType) && validStructures.includes(structure)) {
+        return layoutString as ScheduleLayoutType;
+      }
+    }
+    
+    // Default fallback for invalid formats
+    return 'todolist-structured';
+  }, [layoutPreference]);
+
+  // Use the scheduleHelper function to apply the layout
+  const memoizedTasks = useMemo(() => {
+    return applyScheduleLayout(tasks, normalizedLayoutType);
+  }, [tasks, normalizedLayoutType]);
 
   // Enhanced moveTask to handle indentation levels more precisely
   const moveTask = useCallback((dragIndex: number, hoverIndex: number, shouldIndent: boolean, targetSection: string | null) => {

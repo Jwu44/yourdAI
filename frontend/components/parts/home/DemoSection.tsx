@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Image from "next/image"; 
 
 const DemoSection = () => {
   return (
@@ -32,7 +33,7 @@ const DemoSection = () => {
               {/* Demo visuals */}
               <div className="w-full lg:w-3/5 relative">
                 <div className="relative rounded-2xl overflow-hidden glass-panel-dark shadow-xl">
-                  <img 
+                  <Image 
                     src="/task-decomp.png"
                     alt="yourdai task decomposition" 
                     className="w-full rounded-xl"
@@ -116,7 +117,7 @@ const DemoSection = () => {
               {/* Demo visuals */}
               <div className="w-full lg:w-3/5 relative">
                 <div className="relative rounded-2xl overflow-hidden glass-panel-dark shadow-xl">
-                  <img 
+                  <Image 
                     src="/dashboard-crossed.png" 
                     alt="yourdai energy-aware scheduling" 
                     className="w-full rounded-xl"
@@ -200,7 +201,7 @@ const DemoSection = () => {
               {/* Demo visuals */}
               <div className="w-full lg:w-3/5 relative">
                 <div className="relative rounded-2xl overflow-hidden glass-panel-dark shadow-xl">
-                  <img 
+                  <Image 
                     src="/suggestions.png" 
                     alt="yourdai energy-aware scheduling" 
                     className="w-full rounded-xl"

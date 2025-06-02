@@ -1,45 +1,55 @@
-# General Development Rules
-- Use task-based development approach
-- Before implementation, you are to understand the context of the task in task.md. If requirements for a task in task.md are unclear or you feel like you don't have full context, keep asking necessary clarifying questions until confident.
-<!-- - For each task: write tests, implement code, run tests -->
-- When implementing code:
-    - Document complex logic with inline comments
-    - Modular architecture with clear separation of concerns
-    - Create reusable helper functions for common operations
-    - Always consider the following:
-        - Do not unnecessarily remove any comments or code.
-        - Error handling
-        - Edge cases
-        - Performance optimization
-        - Best practices for [language/framework]
-        - Generate the code with clear comments explaining the logic.
-<!-- - When tests pass:
-  - Update task.md (mark task as complete)
-  - Update memory.md with current state
-  - Fix any warnings/errors
-  - Stop and open a new chat for next task -->
+# Development Guidelines
+## Workflow
+- Before implementation, thoroughly understand the context from `task.md` 
+- If requirements are unclear, ask clarifying questions until confident
+- Parse current task requirements, acceptance criteria, and dependencies
+- Validate changes against architectural constraints in `architecture.mermaid`
 
-## Frontend Development Rules (TypeScript/React)
-- Use TypeScript strict mode with proper interface/type definitions
-- Imports: Group by (1)React/3rd-party (2)Components (3)Hooks (4)Types/Utils
+## Code Implementation Approach
+- Use task-based development with Test-Driven Development (TDD) principles
+- For each task:
+  1. Create test files first
+  2. Implement code to pass tests
+  3. Update status on completion
+- Document complex logic with inline comments
+- Create reusable helper functions for common operations
+
+## Architecture & Design Principles
+- Maintain modular architecture with clear separation of concerns
+- Follow SOLID principles
+- Ensure new code maintains defined architectural boundaries
+- Understand module relationships, data flow patterns, and component dependencies
+
+## Code Style & Patterns
+
+### General Rules
+- Keep logic SIMPLE whenever possible
+- Do not unnecessarily remove any comments or code
+- Implement proper error handling with try/catch (JS) or try/except (Python) blocks
+- Consider edge cases, performance optimization, and language/framework best practices
+
+### TypeScript/React Rules
+- Use TypeScript strict mode with proper interface/type definitions (avoid 'any')
+- Organize imports by: (1) React/3rd-party (2) Components (3) Hooks (4) Types/Utils
 - Naming: PascalCase for components, camelCase for functions/variables
-- Components: Functional components with proper type annotations
-- Styling: Tailwind CSS with shadcn/ui components
-- Error handling: try/catch blocks with toast notifications
-- Path aliases: Use @/* import paths (configured in tsconfig.json)
+- Use functional components with proper type annotations
+- Apply Tailwind CSS with shadcn/ui components
+- Use @/* import paths (configured in tsconfig.json)
+- Document with JSDoc comments
 
-## Backend Developmen Rules (Python/Flask)
-- Route organization: Blueprint pattern with clear endpoints
-- Type annotations: Use Python typing module
+### Python/Flask Rules
+- Use Blueprint pattern with clear endpoints
+- Implement type annotations using Python typing module
 - Naming: snake_case for functions/variables
-- Error handling: try/except blocks with consistent error responses
-- Models: Class-based with validation methods
-- Documentation: Clear docstrings for functions and classes
+- Class-based models with validation methods
+- Write clear docstrings for functions and classes
 
-# Memory Management
-- Keep memory.md up-to-date with project state based on completed tasks in task.md
-- Include technical decisions and context needed between sessions
-- Do not annotate task completion in memory.md. It will be tracked in task.md
+## Validation & Error Prevention
+- Verify type consistency
+- Check for potential null/undefined values
+- Validate against business rules
+- Ensure comprehensive error handling
+- Run tests to validate implementation
 
-# Update development guidelines
-- If necessary, update this file development-guidelines.md to reflect anything you've learned while working on the project.
+## Continuous Improvement
+- Update these guidelines as needed to reflect new learnings

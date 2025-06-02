@@ -18,19 +18,6 @@
 - **Relationships**: Links to User model
 - **Storage**: MongoDB with indexes on user_id+date and confidence
 
-#### CalendarEvent
-- **Purpose**: Stores Google Calendar events
-- **Key Fields**:
-  - `userId` (string): User identifier
-  - `googleId` (string): Google account reference
-  - `calendarId`/`eventId` (string): Google Calendar references
-  - `summary`/`description`: Event details
-  - `startTime`/`endTime` (date): Event timeframe
-  - `status`: confirmed/tentative/cancelled
-  - `taskId` (string/null): Associated task (if converted)
-- **Validation**: MongoDB JSON schema
-- **Sync Status**: Tracks sync status with Google Calendar
-
 #### Task
 - **Purpose**: Core model for user tasks
 - **Key Fields**:
@@ -100,7 +87,6 @@
 
 - **Backend → AI**: Service layer integration with Anthropic API
 - **Frontend → Backend**: REST API endpoints for AI capabilities
-- **Calendar Integration**: Two-way sync with Google Calendar
 - **Database**: MongoDB for persistent storage of all models
 - **Authentication**: Firebase for user authentication and security
 

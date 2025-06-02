@@ -35,11 +35,8 @@ export interface FormData {
     fun_activities: string;
     ambitions: string;
   };
-  layout_preference: {
-    structure: string;
-    subcategory: string;
-    timeboxed: string;
-  };
+  // Replace legacy layout_preference with enhanced version
+  layout_preference: LayoutPreference;
   [key: string]: any;
   scheduleId?: string;
   response?: string;
@@ -112,10 +109,99 @@ export type FormAction = {
   type: 'RESET_FORM';
 };
 
+// Base layout types (can be extended in the future)
+export type BaseLayoutType = 
+  | "todolist" 
+  | "kanban" 
+  | "calendar" 
+  | "timeline";
+
+// Structure variants for layouts
+export type LayoutStructure = 
+  | "structured" 
+  | "unstructured";
+
+// Subcategory types for structured layouts
+export type TodolistSubcategory = 
+  | "day-sections" 
+  | "priority" 
+  | "category" 
+  | "custom";
+
+export type KanbanSubcategory = 
+  | "status" 
+  | "priority" 
+  | "assignee" 
+  | "custom";
+
+export type CalendarSubcategory = 
+  | "day" 
+  | "week" 
+  | "month" 
+  | "custom";
+
+export type TimelineSubcategory = 
+  | "chronological" 
+  | "milestone" 
+  | "custom";
+
+// Combined layout type that connects base type with structure
+export type ScheduleLayoutType = 
+  | `${BaseLayoutType}-${LayoutStructure}`;
+
+// Task ordering patterns
+export type TaskOrderingPattern = 
+  | "timebox" 
+  | "untimebox"
+  | "batching" 
+  | "alternating" 
+  | "three-three-three";
+
+// Mapping of layout types to their valid subcategories
+export interface LayoutSubcategoryMap {
+  "todolist-structured": TodolistSubcategory;
+  "todolist-unstructured": never; // Unstructured layouts don't have subcategories
+  "kanban-structured": KanbanSubcategory;
+  "kanban-unstructured": never;
+  "calendar-structured": CalendarSubcategory;
+  "calendar-unstructured": never;
+  "timeline-structured": TimelineSubcategory;
+  "timeline-unstructured": never;
+}
+
+// Enhanced layout preference interface with improved typing
 export interface LayoutPreference {
-  structure: 'structured' | 'unstructured';
-  subcategory: string;
-  timeboxed: 'timeboxed' | 'untimeboxed';
+  layout: ScheduleLayoutType;
+  subcategory: string; // Using string for backward compatibility, but should be one of the subcategory types
+  orderingPattern: TaskOrderingPattern;
+}
+
+// Helper function type to get valid subcategories for a layout type
+export type SubcategoriesForLayout<T extends ScheduleLayoutType> = 
+  T extends keyof LayoutSubcategoryMap ? LayoutSubcategoryMap[T] : never;
+
+// Helper function to validate if a subcategory is valid for a given layout type
+export function isValidSubcategoryForLayout(
+  layout: ScheduleLayoutType, 
+  subcategory: string
+): boolean {
+  // For unstructured layouts, any subcategory (or none) is valid
+  if (layout.includes('unstructured')) {
+    return true;
+  }
+  
+  // For structured layouts, check against valid subcategories
+  if (layout.startsWith('todolist')) {
+    return ['day-sections', 'priority', 'category', 'custom'].includes(subcategory);
+  } else if (layout.startsWith('kanban')) {
+    return ['status', 'priority', 'assignee', 'custom'].includes(subcategory);
+  } else if (layout.startsWith('calendar')) {
+    return ['day', 'week', 'month', 'custom'].includes(subcategory);
+  } else if (layout.startsWith('timeline')) {
+    return ['chronological', 'milestone', 'custom'].includes(subcategory);
+  }
+  
+  return false;
 }
 
 // Add a new type for the form context
@@ -267,6 +353,15 @@ export interface SessionData {
   expiresAt: number;
 }
 
+// Create a base schedule metadata type to reduce duplication
+export interface ScheduleMetadataBase {
+  createdAt: string;
+  lastModified: string;
+  totalTasks: number;
+  calendarEvents: number;
+  recurringTasks?: number;
+}
+
 export interface ScheduleDocument {
   date: string;
   tasks: Task[];
@@ -277,11 +372,8 @@ export interface ScheduleDocument {
     work_start_time: string;
     work_end_time: string;
     energy_patterns: string[];
-    layout_preference: {
-      structure: 'structured' | 'unstructured';
-      subcategory: string;
-      timeboxed: 'timeboxed' | 'untimeboxed';
-    };
+    // Update to use LayoutPreference
+    layout_preference: LayoutPreference;
     priorities: Record<string, string>;
     tasks: string[];
   };
@@ -292,17 +384,20 @@ export interface ScheduleDocument {
     calendarSynced: boolean;
     totalTasks: number;
     calendarEvents: number;
+    // Add new fields for enhanced metadata
+    recurringTasks?: number;
+    orderingPattern?: TaskOrderingPattern;
   };
 }
 
+// Update ScheduleResponse to extend the base metadata
 export interface ScheduleResponse {
   _id: string;
   date: string;
   tasks: Task[];
-  metadata: {
-    createdAt: string;
-    lastModified: string;
-  };
+  layout?: ScheduleLayoutType;
+  orderingPattern?: TaskOrderingPattern;
+  metadata: ScheduleMetadataBase;
 }
 
 export interface TimeSlot {
@@ -317,6 +412,21 @@ export interface ScheduleMetadata {
   recurringTasks?: number;
   generatedAt: string;
   error?: string;
+}
+
+// New interface for structured schedule data
+export interface ScheduleData {
+  tasks: Task[];
+  layout: ScheduleLayoutType;
+  orderingPattern: TaskOrderingPattern;
+  scheduleId?: string;
+  metadata: {
+    generatedAt: string;
+    totalTasks: number;
+    calendarEvents: number;
+    recurringTasks: number;
+    error?: string;
+  };
 }
 
 export interface GoogleCalendarEvent {
@@ -350,4 +460,10 @@ export interface FirebaseUser {
 
 export interface WithHandleGetStarted {
   handleGetStarted: () => Promise<void>;
+}
+
+export interface CalendarCredentials {
+  accessToken: string;
+  expiresAt: number;
+  scopes: string[];
 }

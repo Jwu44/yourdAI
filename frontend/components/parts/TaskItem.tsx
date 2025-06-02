@@ -67,7 +67,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onUpdate, onDelete }) => {
           className="flex-grow"
         />
       ) : (
-        <div className="flex-grow cursor-pointer" onClick={() => setIsEditing(true)}>
+        <div className="flex-grow cursor-pointer text-white" onClick={() => setIsEditing(true)}>
           {task.text}
         </div>
       )}

@@ -8,8 +8,6 @@ export default function Home() {
         <nav>
           <ul>
             <li><Link href="/">Home</Link></li>
-            <li><Link href="/personal-details">Personal Details</Link></li>
-            <li><Link href="/work-times">Work Times</Link></li>
             <li><Link href="/tasks">Tasks</Link></li>
             <li><Link href="/energy-patterns">Energy Patterns</Link></li>
             <li><Link href="/priorities">Priorities</Link></li>

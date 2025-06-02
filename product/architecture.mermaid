@@ -1,0 +1,71 @@
+graph TD
+    subgraph "Frontend (Next.js)"
+        A1[Authentication] --> A2[Firebase Auth]
+        A3[User Routes] --- A4[Pages/Components]
+        
+        subgraph "Components"
+            A4 --> A5[UI Components]
+            A4 --> A6[Task Management]
+            A4 --> A7[Schedule Visualization]
+            A6 --> A8[Editable Schedule]
+            A6 --> A9[Task Editing]
+            A6 --> A10[AI Suggestions]
+        end
+        
+        subgraph "API Services"
+            B1[API Clients]
+            B1 --> B2[Tasks API]
+            B1 --> B3[Users API]
+            B1 --> B4[Calendar API]
+        end
+        
+        A4 --> B1
+    end
+    
+    subgraph "Backend (Flask)"
+        C1[API Routes] --> C2[Task Routes]
+        C1 --> C3[User Routes]
+        C1 --> C4[Calendar Routes]
+        
+        subgraph "Services"
+            D1[AI Service]
+            D1 --> D2[Schedule Generation]
+            D1 --> D3[Task Categorization]
+            D1 --> D4[Task Decomposition]
+            D1 --> D5[Schedule Suggestions]
+            
+            D6[Calendar Service]
+            D7[User Service]
+        end
+        
+        C2 --> D1
+        C3 --> D7
+        C4 --> D6
+    end
+    
+    subgraph "Database (MongoDB)"
+        E1[UserSchedules]
+        E2[Users]
+        E3[CalendarEvents]
+        E4[AIsuggestions]
+        E5[MicrostepFeedback]
+        E6[DecompositionPatterns]
+    end
+    
+    subgraph "External Services"
+        F1[Google Calendar API]
+        F2[Anthropic Claude API]
+    end
+    
+    D1 --> F2
+    D6 --> F1
+    
+    D1 --> E1
+    D1 --> E4
+    D1 --> E5
+    D1 --> E6
+    D6 --> E3
+    D7 --> E2
+    
+    A2 -. Auth Token .-> C3
+    B1 -. API Requests .-> C1

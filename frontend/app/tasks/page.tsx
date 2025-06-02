@@ -149,6 +149,7 @@ const Tasks: React.FC = () => {
             onClick={handlePrevious} 
             variant="ghost"
             type="button"
+            className="text-primary hover:text-primary"
           >
             Previous
           </Button>

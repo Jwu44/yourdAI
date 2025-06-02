@@ -7,7 +7,6 @@ from pymongo.collection import Collection
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from .models.ai_suggestions import AI_SUGGESTION_INDEXES
-from .models.calendar_schema import calendar_events_schema
 from .models.user_schema import user_schema_validation
 from functools import lru_cache
 
@@ -286,8 +285,14 @@ def initialize_calendar_collections():
         raise
 
 def get_calendar_events_collection():
-    """Get collection for storing calendar events."""
-    return get_collection('CalendarEvents')
+    """
+    Get the calendar_events collection from the database
+    
+    Returns:
+        MongoDB collection for calendar events
+    """
+    db = get_database()
+    return db['calendar_events']
 
 # Helper functions for calendar operations
 def sync_calendar_status(user_id: str, status: str) -> bool:
@@ -343,12 +348,6 @@ def initialize_db():
             db.create_collection('users', validator=user_schema_validation)
         else:
             db.command('collMod', 'users', validator=user_schema_validation)
-
-        # Setup calendar events collection with schema validation
-        if 'CalendarEvents' not in db.list_collection_names():
-            db.create_collection('CalendarEvents', validator=calendar_events_schema)
-        else:
-            db.command('collMod', 'CalendarEvents', validator=calendar_events_schema)
 
         print("Database initialized successfully")
         

@@ -96,7 +96,7 @@ const PriorityRanking: React.FC = () => {
   }, [router, state]);
 
   const handlePrevious = useCallback(() => {
-    router.push('/work-times');
+    router.push('/');
   }, [router]);
 
   return (
@@ -137,6 +137,7 @@ const PriorityRanking: React.FC = () => {
             onClick={handlePrevious} 
             variant="ghost"
             type="button"
+            className="text-primary hover:text-primary"
           >
             Previous
           </Button>

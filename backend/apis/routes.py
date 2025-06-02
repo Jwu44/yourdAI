@@ -356,10 +356,11 @@ def update_user(user_id):
 def submit_data():
     try:
         user_data = request.json
-        if not user_data or 'name' not in user_data:
-            return jsonify({"error": "No data provided or name is missing"}), 400
+        if not user_data:
+            return jsonify({"error": "No data provided"}), 400
         
-        user_id = user_data['name']
+        # Use 'name' field if available, otherwise generate a unique identifier
+        user_id = user_data.get('name', str(uuid.uuid4()))
         
         print(f"User data received for user {user_id}:", user_data)
         
@@ -374,17 +375,15 @@ def submit_data():
         try:
             user_schedules = get_user_schedules_collection()
             
-            # Extract schedule content from tags for storage
-            schedule_content = ai_result.get("schedule", "")
-            schedule_match = re.search(r'<schedule>([\s\S]*?)</schedule>', schedule_content)
-            schedule_text = schedule_match.group(1).strip() if schedule_match else schedule_content
+            # Use structured data directly for storage
+            structured_data = ai_result.get("structured_data", {})
             
             # Create schedule document
             schedule_document = {
                 "userId": user_id,
                 "date": datetime.now().isoformat(),
                 "inputs": user_data,
-                "schedule": schedule_text,
+                "schedule": structured_data,
                 "metadata": {
                     "created_at": datetime.now().isoformat(),
                     "source": "ai_service"
@@ -398,8 +397,10 @@ def submit_data():
             # Create response with schedule and new document ID
             response_data = {
                 "success": True,
-                "schedule": schedule_content,  # Keep original schedule with tags
-                "scheduleId": str(db_result.inserted_id)
+                "scheduleId": str(db_result.inserted_id),
+                "tasks": ai_result.get("tasks", []),
+                "layout_type": ai_result.get("layout_type", "todolist-structured"),
+                "ordering_pattern": ai_result.get("ordering_pattern", "timebox")
             }
             
             print("Schedule saved to database successfully")
@@ -740,8 +741,8 @@ def api_decompose_task():
             'user_id': data.get('user_id', 'unknown'),
             'energy_patterns': data.get('energy_patterns', []),
             'priorities': data.get('priorities', {}),
-            'work_start_time': data.get('work_start_time'),
-            'work_end_time': data.get('work_end_time')
+            'work_start_time': data.get('work_start_time', '9:00 AM'),
+            'work_end_time': data.get('work_end_time', '10:00 PM')
         }
         
         # Call AI service directly
@@ -910,8 +911,8 @@ def api_generate_suggestions():
                 historical_schedules=data['historicalSchedules'],
                 priorities=data['priorities'],
                 energy_patterns=data['energyPatterns'],
-                work_start_time=data.get('workStartTime'),
-                work_end_time=data.get('workEndTime')
+                work_start_time=data.get('workStartTime', '9:00 AM'),
+                work_end_time=data.get('workEndTime', '10:00 PM')
             )
             
             # Store suggestions in database

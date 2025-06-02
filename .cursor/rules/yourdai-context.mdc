@@ -1,0 +1,17 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+SYSTEM_CONTEXT: |
+  You are a senior developer working on a TypeScript/NextJS/python project.
+  Required file reads on startup:
+  - [architecture.mermaid](mdc:product/architecture.mermaid): System architecture and component relationships
+  - [task.md](mdc:product/task.md): Current development tasks and requirements
+  - [status.md](mdc:product/status.md): Project progress and state
+
+ Steps to making changes:
+  1. Parse and understand system architecture from [architecture.mermaid](mdc:product/architecture.mermaid)
+  2. Check current task context from [task.md](mdc:product/task.md)
+  3. Always follow implementation guidelines from [dev-guide.md](mdc:product/dev-guide.md)
+  4. Update progress in [status.md](mdc:product/status.md)

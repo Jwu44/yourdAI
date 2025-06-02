@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { WithHandleGetStarted } from '@/lib/types';
+import Image from "next/image"; 
 
 const Hero = ({ handleGetStarted }: WithHandleGetStarted) => {
   return (
@@ -48,9 +49,11 @@ const Hero = ({ handleGetStarted }: WithHandleGetStarted) => {
           {/* App Preview with improved styling */}
           <div className="relative max-w-5xl mx-auto animate-fade-in animate-delay-500">
             <div className="neo-blur overflow-hidden rounded-2xl shadow-2xl">
-              <img 
+              <Image 
                 src="/dashboard-crossed.png" 
                 alt="yourdai app interface" 
+                width={1024} 
+                height={576}
                 className="w-full rounded-xl transform hover:scale-[1.02] transition-all duration-700 ease-in-out"
               />
             </div>

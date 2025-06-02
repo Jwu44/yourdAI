@@ -160,7 +160,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             {isLoadingSuggestions ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <Sparkles className="h-5 w-5" />
+              <Sparkles className="h-5 w-5 text-primary" />
             )}
           </Button>
   
@@ -178,7 +178,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 }`}
                 aria-label="Previous day"
               >
-                <ChevronLeft className="h-5 w-5" />
+                <ChevronLeft className="h-5 w-5 text-primary" />
               </Button>
               <Button
                 variant="ghost"
@@ -190,7 +190,7 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 }`}
                 aria-label="Next day"
               >
-                <ChevronRight className="h-5 w-5" />
+                <ChevronRight className="h-5 w-5 text-primary" />
               </Button>
           </div>
         </div>
@@ -326,8 +326,8 @@ const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                   day_hidden: "invisible",
                 }}
                 components={{
-                  IconLeft: () => <ChevronLeft className="h-4 w-4" />,
-                  IconRight: () => <ChevronRight className="h-4 w-4" />,
+                  IconLeft: () => <ChevronLeft className="h-4 w-4 text-primary" />,
+                  IconRight: () => <ChevronRight className="h-4 w-4 text-primary" />,
                 }}
               />
             </div>

@@ -191,9 +191,12 @@ const DashboardLeftCol: React.FC<DashboardLeftColProps> = ({
           <div className="mb-4">
             <Label className="mb-2 block font-bold">Structure</Label>
             <RadioGroup
-              value={state.layout_preference.structure || ''}
+              value={state.layout_preference.layout.startsWith('todolist-structured') ? 'structured' : 'unstructured'}
               onValueChange={(value) => handleNestedChange({
-                target: { name: 'layout_preference.structure', value }
+                target: { 
+                  name: 'layout_preference.layout', 
+                  value: value === 'structured' ? 'todolist-structured' : 'todolist-unstructured' 
+                }
               } as React.ChangeEvent<HTMLInputElement>)}
               className="space-y-2"
             >
@@ -225,7 +228,7 @@ const DashboardLeftCol: React.FC<DashboardLeftColProps> = ({
           </div>
 
           {/* Subcategory */}
-          {state.layout_preference.structure === 'structured' && (
+          {state.layout_preference.layout === 'todolist-structured' && (
             <div className="mb-4">
               <Label htmlFor="layout_subcategory" className="mb-2 block font-bold">Subcategory</Label>
               <Select
@@ -246,41 +249,26 @@ const DashboardLeftCol: React.FC<DashboardLeftColProps> = ({
             </div>
           )}
 
-          {/* Timebox */}
+          {/* Task Pattern */}
           <div className="mb-4">
-            <Label className="mb-2 block font-bold">Timebox</Label>
-            <RadioGroup
-              value={state.layout_preference.timeboxed || ''}
+            <Label className="mb-2 block font-bold">Task Pattern</Label>
+            <Select
+              value={state.layout_preference.orderingPattern || ''}
               onValueChange={(value) => handleNestedChange({
-                target: { name: 'layout_preference.timeboxed', value }
-              } as React.ChangeEvent<HTMLInputElement>)}
-              className="space-y-2"
+                target: { name: 'layout_preference.orderingPattern', value }
+              } as React.ChangeEvent<HTMLSelectElement>)}
             >
-              <div className="flex items-center">
-                <RadioGroupItem 
-                  value="timeboxed" 
-                  id="timeboxed" 
-                  className={cn(
-                    "border-white",
-                    "before:bg-white before:shadow-white",
-                    "data-[state=checked]:border-white data-[state=checked]:bg-white"
-                  )}
-                />
-                <Label htmlFor="timeboxed" className="ml-2">Timeboxed tasks</Label>
-              </div>
-              <div className="flex items-center">
-                <RadioGroupItem 
-                  value="untimeboxed" 
-                  id="untimeboxed" 
-                  className={cn(
-                    "border-white",
-                    "before:bg-white before:shadow-white",
-                    "data-[state=checked]:border-white data-[state=checked]:bg-white"
-                  )}
-                />
-                <Label htmlFor="untimeboxed" className="ml-2">Flexible timing</Label>
-              </div>
-            </RadioGroup>
+              <SelectTrigger id="task_pattern" className="bg-gray-800 text-white border-gray-700">
+                <SelectValue placeholder="Select a task pattern" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 text-white border-gray-700">
+                <SelectItem value="timebox">Timeboxed</SelectItem>
+                <SelectItem value="untimebox">Untimeboxed</SelectItem>
+                <SelectItem value="batching">Batching</SelectItem>
+                <SelectItem value="alternating">Alternating</SelectItem>
+                <SelectItem value="three-three-three">3-3-3</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 

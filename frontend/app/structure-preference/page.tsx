@@ -8,23 +8,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { OnboardingContent } from '@/components/parts/OnboardingContent';
 import { useForm } from '../../lib/FormContext';
-
-/**
- * Type definitions for structure preference
- */
-interface LayoutPreference {
-  structure: 'structured' | 'unstructured' | '';
-  subcategory: string;
-}
+import { BaseLayoutType, LayoutStructure } from '@/lib/types';
 
 const StructurePreference: React.FC = () => {
   const router = useRouter();
-  const { state, dispatch } = useForm();
+  const { state, dispatch, updateLayoutPreference } = useForm();
 
-  /**
-   * Initialize layout preference if not present
-   * Memoized to prevent unnecessary effect triggers
-   */
   useEffect(() => {
     try {
       if (!state.layout_preference) {
@@ -32,9 +21,10 @@ const StructurePreference: React.FC = () => {
           type: 'UPDATE_FIELD',
           field: 'layout_preference',
           value: {
-            structure: '',
-            subcategory: ''
-          } as LayoutPreference
+            layout: 'todolist-structured',
+            subcategory: '',
+            orderingPattern: 'timebox'
+          }
         });
       }
     } catch (error) {
@@ -42,45 +32,41 @@ const StructurePreference: React.FC = () => {
     }
   }, [state.layout_preference, dispatch]);
 
-  /**
-   * Handle radio input changes
-   * Memoized to prevent unnecessary recreations
-   */
-  const handleInputChange = useCallback((value: LayoutPreference['structure']) => {
+  const handleInputChange = useCallback((value: LayoutStructure) => {
     try {
-      dispatch({
-        type: 'UPDATE_FIELD',
-        field: 'layout_preference',
-        value: {
-          structure: value,
-          subcategory: ''
-        } as LayoutPreference
+      // Extract the base layout type from the current layout preference
+      const baseLayout: BaseLayoutType = (state.layout_preference?.layout?.split('-')[0] as BaseLayoutType) || 'todolist';
+      
+      updateLayoutPreference({
+        layout: `${baseLayout}-${value}` as const,
+        subcategory: value === 'structured' ? 'day-sections' : '',
+        orderingPattern: state.layout_preference?.orderingPattern || 'timebox'
       });
     } catch (error) {
       console.error('Error updating layout preference:', error);
     }
-  }, [dispatch]);
+  }, [updateLayoutPreference, state.layout_preference]);
 
-  /**
-   * Navigation handlers
-   * Memoized to prevent unnecessary recreations
-   */
   const handleNext = useCallback(() => {
     try {
-      console.log('Form data:', state);
-      if (state.layout_preference?.structure === 'structured') {
+      const structure = state.layout_preference?.layout?.split('-')[1] as LayoutStructure;
+      if (structure === 'structured') {
+        console.log('Form data:', state);
         router.push('/subcategory-preference');
       } else {
-        router.push('/timebox-preference');
+        router.push('/task-pattern-preference');
       }
     } catch (error) {
       console.error('Error navigating to next page:', error);
     }
-  }, [router, state]);
+  }, [router, state.layout_preference]);
 
   const handlePrevious = useCallback(() => {
     router.push('/energy-patterns');
   }, [router]);
+
+  // Extract structure from layout for the RadioGroup value
+  const currentStructure = state.layout_preference?.layout?.split('-')[1] as LayoutStructure || '';
 
   return (
     <OnboardingContent
@@ -91,15 +77,12 @@ const StructurePreference: React.FC = () => {
         </TypographyP>
       }
     >
-      {/* Main content wrapper */}
       <div className="w-full max-w-md mx-auto space-y-6">
-        {/* Radio group container */}
         <RadioGroup
-          value={state.layout_preference?.structure || ''}
+          value={currentStructure}
           onValueChange={handleInputChange}
           className="space-y-4"
         >
-          {/* Structured option */}
           <div className="flex items-center space-x-2">
             <RadioGroupItem 
               value="structured" 
@@ -109,13 +92,12 @@ const StructurePreference: React.FC = () => {
             />
             <Label 
               htmlFor="structured"
-              className="cursor-pointer"
+              className="cursor-pointer text-white"
             >
               I prefer a structured day with clear sections
             </Label>
           </div>
 
-          {/* Unstructured option */}
           <div className="flex items-center space-x-2">
             <RadioGroupItem 
               value="unstructured" 
@@ -125,26 +107,26 @@ const StructurePreference: React.FC = () => {
             />
             <Label 
               htmlFor="unstructured"
-              className="cursor-pointer"
+              className="cursor-pointer text-white"
             >
               I like flexibility and do not want sections
             </Label>
           </div>
         </RadioGroup>
 
-        {/* Navigation buttons */}
         <div className="flex justify-end space-x-2">
           <Button 
             onClick={handlePrevious} 
             variant="ghost"
             type="button"
+            className="text-primary hover:text-primary"
           >
             Previous
           </Button>
           <Button 
             onClick={handleNext}
             type="button"
-            disabled={!state.layout_preference?.structure}
+            disabled={!currentStructure}
           >
             Next
           </Button>

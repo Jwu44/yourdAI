@@ -1,0 +1,38 @@
+# Structure examples
+structures:
+  structured:
+    description: "A schedule with clear sections."
+    sample: "Morning Section\n□ Task 1\n□ Task 2\n\nAfternoon Section\n□ Task 3\n□ Task 4"
+  unstructured:
+    description: "A flat list of tasks without sections."
+    sample: "□ Task 1\n□ Task 2\n□ Task 3\n□ Task 4"
+
+# Subcategory examples
+subcategories:
+  day-sections:
+    description: "Schedule organized by time of day."
+    sample: "Morning 🌞\n□ Task 1\n□ Task 2\n\nAfternoon 🌇\n□ Task 3\n□ Task 4\n\nEvening 💤\n□ Task 5\n□ Task 6"
+  priority:
+    description: "Schedule organized by priority levels."
+    sample: "High Priority\n□ Task 1\n□ Task 2\n\nMedium Priority\n□ Task 3\n□ Task 4\n\nLow Priority\n□ Task 5\n□ Task 6"
+  category:
+    description: "Schedule organized by task categories."
+    sample: "Work 💼\n□ Task 1\n□ Task 2\n\nHealth 🏋️‍♀️\n□ Task 3\n□ Task 4\n\nFun 🎉\n□ Task 5\n□ Task 6"
+
+# Task ordering patterns
+ordering_patterns:
+  timeboxed:
+    description: "Tasks with specific time allocations."
+    sample: "□ 9:00am - 10:00am: Task 1\n□ 10:15am - 11:00am: Task 2"
+  untimeboxed:
+    description: "Tasks without specific times."
+    sample: "□ Task 1\n□ Task 2"
+  alternating:
+    description: "Tasks that alternate between energy levels."
+    sample: "□ High energy - Task 1 (Focus)\n□ Medium energy - Task 2 (Admin)\n□ Low energy - Task 3 (Creative)"
+  batching:
+    description: "Tasks grouped by similar activities."
+    sample: "Communication Block 📱\n□ Task 1\n□ Task 2\n\nCreative Work Block 🎨\n□ Task 3\n□ Task 4"
+  three-three-three:
+    description: "3 hours on focus, 3 medium tasks, 3 maintenance tasks."
+    sample: "Focus Task (3 hours) 🎯\n□ 9:00am - 12:00pm: Task 1\n\nMedium Priority Tasks (3 tasks) 📋\n□ Task 2\n□ Task 3\n□ Task 4"

@@ -92,7 +92,7 @@ const EnergyPattern: React.FC = () => {
 
         {/* Navigation buttons */}
         <div className="w-full flex justify-end space-x-2">
-          <Button onClick={handlePrevious} variant="ghost">
+          <Button onClick={handlePrevious} variant="ghost" className="text-primary hover:text-primary">
             Previous
           </Button>
           <Button onClick={handleNext}>

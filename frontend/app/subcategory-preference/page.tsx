@@ -13,11 +13,6 @@ import { useForm } from '../../lib/FormContext';
  */
 type SubcategoryType = 'day-sections' | 'priority' | 'category' | '';
 
-interface LayoutPreferenceState {
-  structure: string;
-  subcategory: SubcategoryType;
-}
-
 /**
  * Available subcategory options
  * Extracted to avoid recreation on each render
@@ -30,7 +25,10 @@ const SUBCATEGORY_OPTIONS = [
 
 const SubcategoryPreference: React.FC = () => {
   const router = useRouter();
-  const { state, dispatch } = useForm();
+  const { state } = useForm();
+
+  // Get the form context at the component level
+  const { updateLayoutPreference } = useForm();
 
   /**
    * Handle select input changes
@@ -38,18 +36,14 @@ const SubcategoryPreference: React.FC = () => {
    */
   const handleInputChange = useCallback((value: SubcategoryType) => {
     try {
-      dispatch({
-        type: 'UPDATE_FIELD',
-        field: 'layout_preference',
-        value: {
-          ...state.layout_preference,
-          subcategory: value
-        } as LayoutPreferenceState
+      // Use the updateLayoutPreference helper which will validate the subcategory
+      updateLayoutPreference({
+        subcategory: value
       });
     } catch (error) {
       console.error('Error updating subcategory preference:', error);
     }
-  }, [dispatch, state.layout_preference]);
+  }, [updateLayoutPreference]);
 
   /**
    * Navigation handlers
@@ -62,7 +56,7 @@ const SubcategoryPreference: React.FC = () => {
         return;
       }
       console.log('Form data:', state);
-      router.push('/timebox-preference');
+      router.push('/task-pattern-preference');
     } catch (error) {
       console.error('Error navigating to next page:', error);
     }
@@ -114,6 +108,7 @@ const SubcategoryPreference: React.FC = () => {
             onClick={handlePrevious} 
             variant="ghost"
             type="button"
+            className="text-primary hover:text-primary"
           >
             Previous
           </Button>
