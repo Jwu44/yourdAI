@@ -33,12 +33,8 @@ def initialize_firebase() -> Optional[firebase_admin.App]:
         # Parse the JSON string
         json_data = json.loads(firebase_json)
         
-        # Check if the JSON has a 'firebaseServiceAccount' field (nested JSON)
-        if 'firebaseServiceAccount' in json_data:
-            creds_dict = json.loads(json_data['firebaseServiceAccount'])
-        else:
-            creds_dict = json_data
-            
+        # In Railway, the JSON is stored directly, no need for nested fields check
+        creds_dict = json_data
         print("Successfully parsed Firebase credentials from JSON")
         
     except json.JSONDecodeError as e:
