@@ -71,11 +71,20 @@ def create_app(testing=False):
 application = create_app()  # Renamed to 'application' for AWS EB
 
 if __name__ == '__main__':
-    # Get port from environment variable with fallback
-    port = int(os.getenv('PORT', 8000))
+    # Get port from environment variable with better error handling
+    try:
+        port = int(os.getenv('PORT', 8000))
+    except (ValueError, TypeError):
+        print(f"Invalid PORT environment variable: {os.getenv('PORT')}")
+        port = 8000  # fallback to default port
     
-    # In production (AWS EB), always bind to all interfaces
+    print(f"Starting application on port {port}")
+    print(f"Environment: {os.getenv('FLASK_ENV', 'not_set')}")
+    print(f"PORT env var: {os.getenv('PORT', 'not_set')}")
+    
+    # Railway provides PORT environment variable
     application.run(
-        host="0.0.0.0",  # Always bind to all interfaces for AWS
-        port=port
+        host="0.0.0.0",
+        port=port,
+        debug=False  # Always False in production
     )
