@@ -225,7 +225,7 @@ class ScheduleService:
                     user_id=user_id,
                     date=date,
                     tasks=calendar_tasks,
-                    source="calendar"
+                    source="calendar_sync"
                 )
                 
                 # Add calendar-specific metadata
@@ -247,7 +247,7 @@ class ScheduleService:
             metadata.update({
                 "generatedAt": format_timestamp(),
                 "lastModified": format_timestamp(),
-                "source": "calendar",
+                "source": "calendar_sync",
                 "calendarSynced": True,
                 "calendarEvents": len(calendar_tasks)
             })
