@@ -1,5 +1,5 @@
-# TASK-21: Debug Google Calendar events not syncing
-Status: In Progress
+# TASK-21: Debug Google Calendar events not syncing  
+Status: ✅ RESOLVED
 
 ## Bug
 I am facing a bug where the user's Google Calendar events are not syncing to the dashboard after google sso.
@@ -164,3 +164,34 @@ Press CTRL+C to quit
 100.64.0.2 - - [29/Jul/2025 04:47:31] "GET /api/calendar/events?date=2025-07-29&timezone=Australia/Sydney HTTP/1.1" 400 -
 
 100.64.0.2 - - [29/Jul/2025 04:47:31] "OPTIONS /api/schedules/2025-07-29 HTTP/1.1" 200 -
+
+---
+
+## ✅ SOLUTION IMPLEMENTED
+
+### Root Cause
+Race condition between calendar connection and auth state listener - the auth listener was overwriting successful calendar connections with `calendarSynced: false`.
+
+### Key Changes Made
+
+**Backend (`backend/db_config.py`)**:
+```python
+# Modified create_or_update_user() to preserve existing calendar connections
+if existing_user and existing_user.get("calendar", {}).get("connected"):
+    # Preserve existing calendar connection if it exists
+    user_doc["calendarSynced"] = existing_user.get("calendarSynced", False)
+    user_doc["calendar"] = existing_user.get("calendar", {})
+else:
+    # Set calendar fields from user_data for new users only
+    user_doc["calendarSynced"] = user_data.get("calendarSynced", False)
+    user_doc["calendar"] = user_data.get("calendar", {})
+```
+
+**Frontend (`frontend/auth/AuthContext.tsx`)**:
+- Added 500ms delay before resetting OAuth state to prevent race conditions
+- Removed problematic additional user storage call that caused Firebase errors
+
+### Result
+✅ Calendar connection now persists through auth state changes  
+✅ Google Calendar events sync successfully to dashboard  
+✅ No more "Google Calendar not connected" errors

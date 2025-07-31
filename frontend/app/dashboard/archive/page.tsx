@@ -53,7 +53,7 @@ const ArchivePage: React.FC = () => {
 
     try {
       const result = await getArchivedTasks()
-      
+
       if (result.success) {
         setArchivedTasks(result.archivedTasks)
       } else {
@@ -79,7 +79,7 @@ const ArchivePage: React.FC = () => {
     try {
       // Move the task to today via API
       const moveResult = await moveArchivedTaskToToday(taskId)
-      
+
       if (!moveResult.success) {
         throw new Error(moveResult.error || 'Failed to move task to today')
       }
@@ -90,7 +90,7 @@ const ArchivePage: React.FC = () => {
       // Load existing schedule for today and add the moved task
       try {
         const existingScheduleResult = await loadSchedule(todayDate)
-        
+
         let existingTasks: Task[] = []
         if (existingScheduleResult.success && existingScheduleResult.schedule) {
           existingTasks = existingScheduleResult.schedule
@@ -114,7 +114,7 @@ const ArchivePage: React.FC = () => {
       } catch (scheduleError) {
         console.warn('Schedule operation failed:', scheduleError)
         toast({
-          title: 'Warning', 
+          title: 'Warning',
           description: 'Task moved but may not appear in today\'s schedule immediately',
           variant: 'default'
         })
@@ -122,7 +122,6 @@ const ArchivePage: React.FC = () => {
 
       // Remove the task from archived tasks list
       setArchivedTasks(prev => prev.filter(archived => archived.taskId !== taskId))
-
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to move task to today'
       toast({
@@ -139,7 +138,7 @@ const ArchivePage: React.FC = () => {
   const handleDeleteArchivedTask = useCallback(async (taskId: string) => {
     try {
       const result = await deleteArchivedTask(taskId)
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to delete archived task')
       }
@@ -152,7 +151,6 @@ const ArchivePage: React.FC = () => {
         description: 'Archived task deleted permanently',
         variant: 'default'
       })
-
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete archived task'
       toast({
@@ -212,13 +210,13 @@ const ArchivePage: React.FC = () => {
     {
       label: 'Move to today',
       icon: Calendar,
-      onClick: () => handleMoveToToday(archivedTask.taskId),
+      onClick: async () => { await handleMoveToToday(archivedTask.taskId) },
       variant: 'default' as const
     },
     {
       label: 'Delete',
       icon: Trash2,
-      onClick: () => handleDeleteArchivedTask(archivedTask.taskId),
+      onClick: async () => { await handleDeleteArchivedTask(archivedTask.taskId) },
       variant: 'destructive' as const
     }
   ], [handleMoveToToday, handleDeleteArchivedTask])
@@ -303,8 +301,8 @@ const ArchivePage: React.FC = () => {
                 <p className="text-muted-foreground mb-6">
                   Archive any tasks for future use. Archived tasks can be moved back to your schedule or deleted permanently.
                 </p>
-                <Button 
-                  onClick={() => router.push('/dashboard')}
+                <Button
+                  onClick={() => { router.push('/dashboard') }}
                   variant="outline"
                   className="flex items-center gap-2 mx-auto"
                 >
@@ -331,7 +329,7 @@ const ArchivePage: React.FC = () => {
                       </>
                     )}
                   </div>
-                  
+
                   {/* Archived task displayed as EditableScheduleRow */}
                   <EditableScheduleRow
                     task={archivedTask.task}
@@ -358,4 +356,4 @@ const ArchivePage: React.FC = () => {
   )
 }
 
-export default ArchivePage 
+export default ArchivePage

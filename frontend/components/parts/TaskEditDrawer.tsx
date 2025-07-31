@@ -285,15 +285,15 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         onPointerDownOutside={(e) => {
           // Allow time picker interactions - check if click is on time input or its picker
           const target = e.target as HTMLElement
-          
+
           // Don't close drawer if clicking on time inputs, their pickers, or select dropdowns
-          if (target?.closest('input[type="time"]') || 
+          if (target?.closest('input[type="time"]') ||
               target?.closest('.time-input-custom') ||
               target?.closest('[data-radix-popper-content-wrapper]') ||
               target?.closest('[data-radix-select-content]')) {
             return
           }
-          
+
           // Only prevent closing if user has unsaved changes
           const hasUnsavedChanges = editedTask.text !== (task?.text || '')
           if (hasUnsavedChanges) {
@@ -320,7 +320,7 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                 name="text"
                 value={editedTask.text}
                 onChange={handleInputChange}
-                onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                onKeyDown={async (e) => await (e.key === 'Enter' && handleSave())}
                 className="mt-1"
               />
             </div>
@@ -363,7 +363,7 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
               <label htmlFor="start_time" className="block text-sm font-medium text-foreground">
                 Start Time
               </label>
-              <div 
+              <div
                 className="relative"
                 onPointerDown={(e) => {
                   // Prevent drawer from closing when interacting with time input
@@ -376,7 +376,7 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                   type="time"
                   value={editedTask.start_time || ''}
                   onChange={handleInputChange}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                  onKeyDown={async (e) => await (e.key === 'Enter' && handleSave())}
                   onClick={(e) => {
                     // Try to trigger time picker on click
                     e.currentTarget.showPicker?.()
@@ -390,7 +390,7 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
               <label htmlFor="end_time" className="block text-sm font-medium text-foreground">
                 End Time
               </label>
-              <div 
+              <div
                 className="relative"
                 onPointerDown={(e) => {
                   // Prevent drawer from closing when interacting with time input
@@ -403,7 +403,7 @@ const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                   type="time"
                   value={editedTask.end_time || ''}
                   onChange={handleInputChange}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSave()}
+                  onKeyDown={async (e) => await (e.key === 'Enter' && handleSave())}
                   onClick={(e) => {
                     // Try to trigger time picker on click
                     e.currentTarget.showPicker?.()

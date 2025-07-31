@@ -23,11 +23,11 @@ interface AccountDeletionDialogProps {
 
 /**
  * Account deletion confirmation dialog component
- * 
+ *
  * Displays a confirmation dialog matching the design requirements
  * with proper styling from globals.css and destructive action patterns.
  */
-export function AccountDeletionDialog({
+export function AccountDeletionDialog ({
   open,
   onOpenChange,
   onConfirmDelete,
@@ -44,11 +44,11 @@ export function AccountDeletionDialog({
             Are you sure you want to delete this account?
           </DialogDescription>
         </DialogHeader>
-        
+
         {/* Warning message */}
         <div className="py-4">
           <p className="text-sm text-muted-foreground">
-            This action cannot be undone. This will permanently delete your account 
+            This action cannot be undone. This will permanently delete your account
             and remove all of your data from our servers, including all your:
           </p>
           <ul className="mt-2 text-sm text-muted-foreground list-disc list-inside space-y-1">
@@ -62,7 +62,7 @@ export function AccountDeletionDialog({
         <div className="flex justify-end gap-3 pt-4">
           <Button
             variant="outline"
-            onClick={() => onOpenChange(false)}
+            onClick={() => { onOpenChange(false) }}
             disabled={isDeleting}
           >
             Cancel
@@ -78,4 +78,4 @@ export function AccountDeletionDialog({
       </DialogContent>
     </Dialog>
   )
-} 
+}

@@ -10,9 +10,9 @@ interface CalendarConnectionLoaderProps {
  * Loading screen shown during calendar connection process
  * Displays between authentication and dashboard redirect
  */
-export const CalendarConnectionLoader: React.FC<CalendarConnectionLoaderProps> = ({ 
-  stage, 
-  message 
+export const CalendarConnectionLoader: React.FC<CalendarConnectionLoaderProps> = ({
+  stage,
+  message
 }) => {
   const getStageInfo = () => {
     switch (stage) {
@@ -74,10 +74,11 @@ export const CalendarConnectionLoader: React.FC<CalendarConnectionLoaderProps> =
 
           {/* Progress Bar */}
           <div className="w-full bg-gray-200 rounded-full h-2">
-            <div 
+            <div
               className={`bg-purple-600 h-2 rounded-full transition-all duration-500 ${
-                stage === 'connecting' ? 'w-1/3' : 
-                stage === 'verifying' ? 'w-2/3' : 'w-full'
+                stage === 'connecting'
+? 'w-1/3'
+                : stage === 'verifying' ? 'w-2/3' : 'w-full'
               }`}
             />
           </div>
@@ -122,4 +123,4 @@ export const CalendarConnectionLoader: React.FC<CalendarConnectionLoaderProps> =
   )
 }
 
-export default CalendarConnectionLoader 
+export default CalendarConnectionLoader

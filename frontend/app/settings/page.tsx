@@ -196,20 +196,20 @@ export default function SettingsPage () {
     if (isLoggingOut) return // Prevent double clicks
 
     setIsLoggingOut(true)
-    
+
     try {
       // Step 1: Call Firebase signOut
       await signOut()
-      
+
       // Step 2: Call backend logout API to clear session
       const token = await user?.getIdToken()
       if (token) {
         const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://yourdai.be'
-        
+
         const response = await fetch(`${apiBaseUrl}/api/auth/logout`, {
           method: 'DELETE',
           headers: {
-            'Authorization': `Bearer ${token}`,
+            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         })
@@ -221,11 +221,10 @@ export default function SettingsPage () {
 
       // Step 3: Redirect to home page immediately after successful logout
       window.location.assign('/')
-      
     } catch (error) {
       console.error('Logout error:', error)
       setIsLoggingOut(false)
-      
+
       // Show error toast
       toast({
         title: 'Failed to log out. Please try again.',
@@ -241,34 +240,33 @@ export default function SettingsPage () {
     if (!user || isDeleting) return // Prevent multiple deletion attempts
 
     setIsDeleting(true)
-    
+
     try {
       // Get Firebase auth token
       const token = await user.getIdToken()
-      
+
       // Call backend API to delete account
       const result = await deleteUserAccount(token)
-      
+
       // Show success message
       toast({
         title: 'Account deleted successfully',
-        description: result.warnings?.length 
-          ? `Warning: ${result.warnings.join(', ')}` 
+        description: result.warnings?.length
+          ? `Warning: ${result.warnings.join(', ')}`
           : 'Your account and all data have been permanently deleted.',
         variant: 'success'
       })
-      
+
       // Close dialog
       setIsDeletionDialogOpen(false)
-      
+
       // Sign out from Firebase and redirect immediately
       await signOut()
       window.location.assign('/')
-      
     } catch (error) {
       console.error('Account deletion error:', error)
       setIsDeleting(false)
-      
+
       // Show error toast
       toast({
         title: 'Failed to delete account',
@@ -406,7 +404,7 @@ export default function SettingsPage () {
                 <div>
                   <p className="text-sm font-medium">Log out of this device</p>
                 </div>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={handleLogout}
                   disabled={isLoggingOut}
@@ -420,7 +418,7 @@ export default function SettingsPage () {
                 <div>
                   <p className="text-sm font-medium">Delete your account</p>
                 </div>
-                <Button 
+                <Button
                   variant="destructive"
                   onClick={handleOpenDeleteDialog}
                   disabled={isDeleting}

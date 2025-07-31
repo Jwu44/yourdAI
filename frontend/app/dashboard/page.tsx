@@ -12,11 +12,13 @@ import TaskEditDrawer from '@/components/parts/TaskEditDrawer'
 import { SidebarLayout } from '@/components/parts/SidebarLayout'
 import DashboardHeader from '@/components/parts/DashboardHeader'
 import EditableSchedule from '@/components/parts/EditableSchedule'
+import CalendarConnectionLoader from '@/components/parts/CalendarConnectionLoader'
 
 // Hooks and Context
 import { useToast } from '@/hooks/use-toast'
 import { useForm } from '../../lib/FormContext'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useAuth } from '@/auth/AuthContext'
 
 // Types
 import {
@@ -44,6 +46,7 @@ const Dashboard: React.FC = () => {
   const { state } = useForm()
   const { toast } = useToast()
   const isMobile = useIsMobile()
+  const { calendarConnectionStage } = useAuth()
 
   // Create task drawer state
   const [isTaskDrawerOpen, setIsTaskDrawerOpen] = useState(false)
@@ -409,13 +412,50 @@ const Dashboard: React.FC = () => {
     }
   }, [currentDayIndex, scheduleCache, toast])
 
-  const handleReorderTasks = useCallback((reorderedTasks: Task[]) => {
-    setScheduleDays(prevDays => {
-      const newDays = [...prevDays]
-      newDays[currentDayIndex] = reorderedTasks
-      return newDays
-    })
-  }, [currentDayIndex])
+  const handleReorderTasks = useCallback(async (reorderedTasks: Task[]) => {
+    try {
+      const currentDate = getDateString(currentDayIndex)
+
+      // Update frontend state
+      setScheduleDays(prevDays => {
+        const newDays = [...prevDays]
+        newDays[currentDayIndex] = reorderedTasks
+        return newDays
+      })
+
+      // Update cache
+      setScheduleCache(prevCache => {
+        const newCache = new Map(prevCache)
+        newCache.set(currentDate, reorderedTasks)
+        return newCache
+      })
+
+      // Save to backend
+      const updateResult = await updateSchedule(currentDate, reorderedTasks)
+
+      if (!updateResult.success) {
+        throw new Error(updateResult.error || 'Failed to save task positions')
+      }
+    } catch (error) {
+      console.error('Error saving reordered tasks:', error)
+
+      // Revert frontend state on error
+      setScheduleDays(prevDays => {
+        const newDays = [...prevDays]
+        const cachedSchedule = scheduleCache.get(getDateString(currentDayIndex))
+        if (cachedSchedule && newDays[currentDayIndex]) {
+          newDays[currentDayIndex] = cachedSchedule
+        }
+        return newDays
+      })
+
+      toast({
+        title: 'Error',
+        description: 'Failed to save task positions. Please try again.',
+        variant: 'destructive'
+      })
+    }
+  }, [currentDayIndex, scheduleCache, toast])
 
   /**
    * Filter tasks for next day based on task5.md requirements
@@ -534,11 +574,6 @@ const Dashboard: React.FC = () => {
 
         // Navigate to next day
         setCurrentDayIndex(prevIndex => prevIndex + 1)
-
-        toast({
-          title: 'Success',
-          description: `Loaded existing schedule for ${nextDayDate}`
-        })
 
         return
       }
@@ -844,19 +879,6 @@ const Dashboard: React.FC = () => {
         )
 
         setCurrentDayIndex(prevIndex => prevIndex - 1)
-
-        // Show appropriate message based on whether schedule has tasks
-        if (previousDaySchedule.length > 0) {
-          toast({
-            title: 'Success',
-            description: "Previous day's schedule loaded successfully."
-          })
-        } else {
-          toast({
-            title: 'Previous Day',
-            description: 'No schedule found for this date.'
-          })
-        }
       } else {
         // Failed to load - show empty schedule anyway to allow navigation
         const emptySchedule: Task[] = []
@@ -1236,6 +1258,11 @@ const Dashboard: React.FC = () => {
     document.documentElement.classList.remove('dark')
   }, [])
 
+  // Show calendar connection loader during OAuth flow
+  if (calendarConnectionStage) {
+    return <CalendarConnectionLoader stage={calendarConnectionStage} />
+  }
+
   return (
     <SidebarLayout>
       <div className="flex flex-col h-full bg-background">
@@ -1249,7 +1276,7 @@ const Dashboard: React.FC = () => {
           onAddTask={() => { setIsTaskDrawerOpen(true) }}
         />
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto mt-8">
           <div className="w-full max-w-4xl mx-auto px-6 pb-6">
 
             {isLoadingSchedule

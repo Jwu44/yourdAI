@@ -337,6 +337,7 @@ export interface AuthState {
   user: User | null
   loading: boolean
   error: string | null
+  calendarConnectionStage: 'connecting' | 'verifying' | 'complete' | null
 }
 
 export interface AuthContextType extends AuthState {

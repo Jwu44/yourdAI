@@ -42,33 +42,33 @@ const GoogleCalendarIntegrationCard: React.FC = () => {
   } | null>(null)
   const [isReconnecting, setIsReconnecting] = useState(false)
 
-     /**
+  /**
     * Fetch current calendar connection status
     */
-   const fetchConnectionStatus = async () => {
-     if (!currentUser) return
+  const fetchConnectionStatus = async () => {
+    if (!currentUser) return
 
-     try {
-       setIsLoading(true)
-       const status = await calendarApi.getCalendarStatus(currentUser.uid)
-       // Map backend response to expected format  
-       setConnectionStatus({
-         connected: status.connected || false,
-         syncStatus: status.syncStatus || 'never',
-         lastSyncTime: status.lastSyncTime || null,
-         hasCredentials: Boolean((status as any).hasCredentials || status.credentials)
-       })
-     } catch (error) {
-       console.error('Failed to fetch calendar status:', error)
-       toast({
-         title: 'Error',
-         description: 'Failed to check calendar connection status',
-         variant: 'destructive'
-       })
-     } finally {
-       setIsLoading(false)
-     }
-   }
+    try {
+      setIsLoading(true)
+      const status = await calendarApi.getCalendarStatus(currentUser.uid)
+      // Map backend response to expected format
+      setConnectionStatus({
+        connected: status.connected || false,
+        syncStatus: status.syncStatus || 'never',
+        lastSyncTime: status.lastSyncTime || null,
+        hasCredentials: Boolean((status as any).hasCredentials || status.credentials)
+      })
+    } catch (error) {
+      console.error('Failed to fetch calendar status:', error)
+      toast({
+        title: 'Error',
+        description: 'Failed to check calendar connection status',
+        variant: 'destructive'
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   /**
    * Handle calendar reconnection
@@ -77,7 +77,7 @@ const GoogleCalendarIntegrationCard: React.FC = () => {
     try {
       setIsReconnecting(true)
       await reconnectCalendar()
-      
+
       toast({
         title: 'Calendar Connected',
         description: 'Google Calendar has been successfully reconnected',
@@ -128,17 +128,19 @@ const GoogleCalendarIntegrationCard: React.FC = () => {
 
   // Determine status badge and actions
   const isConnected = connectionStatus?.connected && connectionStatus?.hasCredentials
-  const statusBadge = isConnected ? (
+  const statusBadge = isConnected
+    ? (
     <Badge variant="outline" className="text-green-600 border-green-600">
       <CheckCircle className="h-3 w-3 mr-1" />
       Connected
     </Badge>
-  ) : (
+      )
+    : (
     <Badge variant="outline" className="text-orange-600 border-orange-600">
       <AlertCircle className="h-3 w-3 mr-1" />
       Disconnected
     </Badge>
-  )
+      )
 
   return (
     <Card className="w-full">
@@ -169,7 +171,8 @@ const GoogleCalendarIntegrationCard: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex gap-2">
-          {isConnected ? (
+          {isConnected
+            ? (
             <Button
               onClick={handleReconnect}
               disabled={isReconnecting}
@@ -177,38 +180,43 @@ const GoogleCalendarIntegrationCard: React.FC = () => {
               size="sm"
               className="flex-1"
             >
-              {isReconnecting ? (
+              {isReconnecting
+                ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   Reconnecting...
                 </>
-              ) : (
+                  )
+                : (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh Connection
                 </>
-              )}
+                  )}
             </Button>
-          ) : (
+              )
+            : (
             <Button
               onClick={handleReconnect}
               disabled={isReconnecting}
               size="sm"
               className="flex-1"
             >
-              {isReconnecting ? (
+              {isReconnecting
+                ? (
                 <>
                   <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                   Connecting...
                 </>
-              ) : (
+                  )
+                : (
                 <>
                   <Calendar className="h-4 w-4 mr-2" />
                   Connect Calendar
                 </>
-              )}
+                  )}
             </Button>
-          )}
+              )}
         </div>
 
         {/* Help Text */}
@@ -223,4 +231,4 @@ const GoogleCalendarIntegrationCard: React.FC = () => {
   )
 }
 
-export default GoogleCalendarIntegrationCard 
+export default GoogleCalendarIntegrationCard

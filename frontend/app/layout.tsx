@@ -6,7 +6,7 @@ import { FormProvider } from '@/lib/FormContext'
 import { ToasterClient } from '@/components/ui/toaster-client'
 
 export const metadata: Metadata = {
-  title: 'yourdAI',
+  title: 'yourdai',
   description: 'your personalised and automated to do list',
   icons: {
     icon: [
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   },
   manifest: '/site.webmanifest',
   other: {
-    'apple-mobile-web-app-title': 'yourdAI'
+    'apple-mobile-web-app-title': 'yourdai'
   }
 }
 
@@ -36,7 +36,7 @@ export default function RootLayout ({
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link rel="shortcut icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <meta name="apple-mobile-web-app-title" content="yourdAI" />
+        <meta name="apple-mobile-web-app-title" content="yourdai" />
         <link rel="manifest" href="/site.webmanifest" />
       </head>
       <body>

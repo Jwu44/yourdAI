@@ -81,8 +81,8 @@ const ArchivedTaskItem: React.FC<ArchivedTaskItemProps> = ({
           {task.categories && task.categories.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-2">
               {task.categories.map((category, index) => (
-                <Badge 
-                  key={index} 
+                <Badge
+                  key={index}
                   className={`mr-1 mb-1 text-white ${getCategoryColor(category)}`}
                 >
                   {category}
@@ -143,4 +143,4 @@ const ArchivedTaskItem: React.FC<ArchivedTaskItemProps> = ({
   )
 }
 
-export { ArchivedTaskItem } 
+export { ArchivedTaskItem }

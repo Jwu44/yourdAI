@@ -11,6 +11,8 @@ graph TD
             A6 --> A8[Editable Schedule]
             A6 --> A9[Task Editing]
             A6 --> A10[AI Suggestions]
+            A6 --> A15[Drag & Drop System]
+            A6 --> A16[Archive Management]
             A11 --> A12[Slack Integration Card]
             A11 --> A13[Integrations Layout]
             A11 --> A14[Floating Action Button]
@@ -22,6 +24,7 @@ graph TD
             B1 --> B3[Users API]
             B1 --> B4[Calendar API]
             B1 --> B5[Integration API]
+            B1 --> B6[Archive API]
         end
         
         A4 --> B1
@@ -46,6 +49,8 @@ graph TD
             D9[Schedule Service]
             D9 --> D10[Multiple Ordering Patterns]
             D9 --> D11[JSON Structure Generation]
+            D12[Archive Service]
+            D13[Schedule Gen Service]
         end
         
         C2 --> D1
@@ -53,16 +58,19 @@ graph TD
         C4 --> D6
         C5 --> D8
         C2 --> D9
+        C2 --> D12
+        C2 --> D13
     end
     
     subgraph "Database (MongoDB)"
-        E1[Tasks]
+        E1[UserSchedules]
         E2[Users]
         E3[CalendarEvents]
         E4[AISuggestions]
-        E5[Schedules]
-        E6[IntegrationStatus]
-        E7[SlackWorkspaces]
+        E5[MicrostepFeedback]
+        E6[DecompositionPatterns]
+        E7[ProcessedSlackMessages]
+        E8[ArchivedTasks]
     end
     
     subgraph "External Services"
@@ -70,6 +78,7 @@ graph TD
         F2[Anthropic Claude API]
         F3[Slack API]
         F4[Klavis AI MCP Server]
+        F5[Firebase Admin Auth]
     end
     
     subgraph "Deployment"
@@ -88,14 +97,18 @@ graph TD
     D1 --> E1
     D1 --> E4
     D1 --> E5
+    D1 --> E6
     D6 --> E3
     D7 --> E2
-    D8 --> E6
     D8 --> E7
-    D9 --> E5
+    D9 --> E1
+    D12 --> E8
+    D13 --> E1
     
     A2 -. Auth Token .-> C3
     B1 -. API Requests .-> C1
     
     F3 -. OAuth .-> D8
     F4 -. Message Processing .-> D8
+    F5 -. Token Verification .-> C3
+    D7 --> F5
